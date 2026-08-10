@@ -24,8 +24,8 @@ export type { MaterialLibraryOptions } from './materials.js';
 export { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 export type { WallGeometryResult } from './shell.js';
 
-export { buildScene } from './buildScene.js';
-export type { BuildSceneOptions, BuildSceneResult } from './buildScene.js';
+export { buildRoom, buildRoomFromDocument } from './buildRoom.js';
+export type { BuildRoomOptions, BuildRoomResult, BuildRoomStats } from './buildRoom.js';
 
 export { buildStructureGeometry, rampLength, stairMetrics } from './structures.js';
 export type { StructureGeometryResult } from './structures.js';

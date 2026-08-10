@@ -7,13 +7,17 @@
 ## 快速提醒
 
 ```bash
-pnpm cli describe <file>                    # 先建立全局认知
+pnpm cli describe <file>                    # 先建立全局认知（会打出派生尺寸）
 pnpm cli validate <file> --json --strict    # 每次编辑后必跑
 pnpm check                                  # 改代码后必跑
 pnpm verify:three                           # 碰过依赖/构建配置后必跑
 ```
 
-- 关卡文件（`*.roomgraph.yaml`）是唯一真相；**不要写房间世界坐标**，位置由连接图求解。
+- 关卡文件（`*.roomgraph.yaml`）是唯一真相。**一个房间 = 一个独立关卡**，永远在原点，
+  没有世界坐标。
+- **尺寸和传送门都是派生的**，由唯一的 `spec` 字段（`S`/`M`/`L`）决定。
+  文档里写不了 `size` / `doorCount` / `pin` / 任何 `type: portal` 的开口 ——
+  想知道实际数字跑 `describe`，别自己算。
 - `three.js/` 是锁定在 `r185` 的 submodule，**只读**。
 - `packages/core` 与 `packages/schema` **禁止 import three.js**。
 - 诊断里的 `hint` 是给你的修复指令，照做即可。

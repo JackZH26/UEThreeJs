@@ -1,38 +1,16 @@
 import type { Rule } from '../diagnostics.js';
 
-export const R060_noSpawnPoint: Rule = {
-  id: 'R060',
-  title: '关卡没有出生点',
-  check(doc, report) {
-    if (doc.rooms.length === 0) return;
-    const hasSpawn = doc.rooms.some((room) => room.markers.some((m) => m.kind === 'spawn'));
-    if (!hasSpawn) {
-      report({
-        severity: 'warning',
-        path: 'rooms',
-        message: '整个关卡没有任何 kind=spawn 的 marker，玩家无处出生。',
-        hint: '在入口房间里加一个 markers 条目：{ id: spawn_player, kind: spawn, at: { x: 0, y: 0, z: 0 } }。',
-      });
-    }
-  },
-};
-
-export const R061_lockedWithoutKey: Rule = {
-  id: 'R061',
-  title: '上锁的连接没有指定钥匙',
-  check(doc, report) {
-    doc.connections.forEach((conn, ci) => {
-      if (conn.locked && conn.keyId === undefined) {
-        report({
-          severity: 'warning',
-          path: `connections[${ci}].keyId`,
-          message: `连接 "${conn.id}" 设为 locked 但未指定 keyId，玩家可能永远无法开启。`,
-          hint: '设置 keyId，或在 note 里说明它由脚本解锁。',
-        });
-      }
-    });
-  },
-};
+/**
+ * ── 已停用：R060（关卡没有出生点）/ R061（上锁连接没有钥匙）──────
+ *
+ * 两条都建立在 v0.1 的"一个关卡 = 多房间串联，有唯一入口"模型上：
+ *   · R060 要求整个关卡至少有一个 spawn marker。现在每个房间就是一个关卡，
+ *     而玩家出生点由游戏的对局逻辑（20 人空投 / 复活点）决定，不是房间属性 ——
+ *     对 36 个房间逐个告警"没有出生点"是纯噪声。
+ *   · R061 依赖已被移除的 `connections.locked` / `keyId`。
+ *
+ * 编号不复用，见 docs/CONVENTIONS.md §4.7。
+ */
 
 export const R062_roomWithoutLight: Rule = {
   id: 'R062',
@@ -54,8 +32,4 @@ export const R062_roomWithoutLight: Rule = {
   },
 };
 
-export const gameplayRules: readonly Rule[] = [
-  R060_noSpawnPoint,
-  R061_lockedWithoutKey,
-  R062_roomWithoutLight,
-];
+export const gameplayRules: readonly Rule[] = [R062_roomWithoutLight];

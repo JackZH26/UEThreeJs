@@ -2,6 +2,7 @@ import { BoxGeometry, PlaneGeometry } from 'three';
 import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Opening, Room, WallSide } from '@tjre/schema';
+import { roomSize } from '@tjre/schema';
 import { DIRECTION } from '@tjre/core';
 
 /**
@@ -9,8 +10,11 @@ import { DIRECTION } from '@tjre/core';
  *  传送门几何（固定样式）
  * ============================================================
  *
- *  传送门是房间之间**唯一**的连接方式，另一端在别的关卡文档里 ——
+ *  传送门是房间之间**唯一**的连接方式，另一端在别的关卡里 ——
  *  运行时由生成器按 seed 决定去向，关卡作者不指定。
+ *
+ *  传送门的**位置与数量**由房间规格派生（见 schema/spec.ts：每条占格边一个，
+ *  居中于格边）。本文件只管**长什么样**。
  *
  *  样式先固定下来（本文件即样式的唯一定义处），由两部分组成：
  *    · 门面：填满洞口的一个平面，用高亮自发光材质，在灰调场景里一眼可辨
@@ -43,8 +47,9 @@ function toLocal(
   v: number,
   d: number,
 ): [number, number, number] {
-  const halfW = room.size.w / 2;
-  const halfD = room.size.d / 2;
+  const size = roomSize(room);
+  const halfW = size.w / 2;
+  const halfD = size.d / 2;
   const dir = DIRECTION[wall]; // 朝外法向
   switch (wall) {
     case 'north':

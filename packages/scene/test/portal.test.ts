@@ -3,46 +3,29 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { Box3 } from 'three';
 import { parseDocument } from '@tjre/core';
-import { RoomGraphDocument, SCHEMA_VERSION } from '@tjre/schema';
-import type { Opening, Room, RoomGraphDocumentInput, WallSide } from '@tjre/schema';
+import { PORTAL_SIZE, Room, roomPortals, roomSize, specPortalCount } from '@tjre/schema';
+import type { Opening, Room as RoomType, RoomSpec, WallSide } from '@tjre/schema';
 import {
   PORTAL_FRAME_MATERIAL,
   PORTAL_SURFACE_MATERIAL,
   buildPortalGeometry,
-  buildScene,
+  buildRoom,
+  buildRoomFromDocument,
 } from '@tjre/scene';
 
 const P = 4; // Float32 顶点精度
 
-function makeRoom(
-  openings: NonNullable<RoomGraphDocumentInput['rooms']>[number]['openings'],
-): Room {
-  const doc = RoomGraphDocument.parse({
-    schemaVersion: SCHEMA_VERSION,
-    meta: { name: 'T' },
-    themes: [{ id: 'p', surfaces: { floor: 'f', ceiling: 'c', wall: 'w' } }],
-    rooms: [
-      {
-        id: 'r',
-        size: { w: 16, d: 12, h: 8 },
-        theme: 'p',
-        doorCount: openings?.length ?? 0,
-        openings,
-      },
-    ],
-    connections: [],
-  } satisfies RoomGraphDocumentInput);
-  const room = doc.rooms[0];
-  if (room === undefined) throw new Error('fixture 构造失败');
-  return room;
+const THEME = { id: 'p', surfaces: { floor: 'f', ceiling: 'c', wall: 'w' } } as const;
+
+function makeRoom(spec: RoomSpec = 'S'): RoomType {
+  return Room.parse({ id: 'r', spec, theme: 'p' });
 }
 
-function portalOn(wall: WallSide, offset = 0, elevation = 0): { room: Room; opening: Opening } {
-  const room = makeRoom([
-    { id: 'p1', wall, type: 'portal', offset, size: { w: 2.4, h: 3 }, elevation },
-  ]);
-  const opening = room.openings[0];
-  if (opening === undefined) throw new Error('无开口');
+/** 取某面墙上的第 n 个派生传送门 */
+function portalOn(spec: RoomSpec, wall: WallSide, index = 0): { room: RoomType; opening: Opening } {
+  const room = makeRoom(spec);
+  const opening = roomPortals(room).filter((p) => p.wall === wall)[index];
+  if (opening === undefined) throw new Error(`${spec}/${wall} 上没有第 ${index} 个传送门`);
   return { room, opening };
 }
 
@@ -53,49 +36,51 @@ function bbox(g: { computeBoundingBox: () => void; boundingBox: Box3 | null }): 
 }
 
 describe('传送门几何（固定样式）', () => {
-  it('门面尺寸等于洞口尺寸', () => {
-    const { room, opening } = portalOn('north');
+  it('门面尺寸等于洞口尺寸（恒 3.0 × 3.2）', () => {
+    const { room, opening } = portalOn('S', 'north');
     const b = bbox(buildPortalGeometry(room, opening).surface);
-    expect(b.max.x - b.min.x).toBeCloseTo(2.4, P);
-    expect(b.max.y - b.min.y).toBeCloseTo(3, P);
+    expect(b.max.x - b.min.x).toBeCloseTo(PORTAL_SIZE.w, P);
+    expect(b.max.y - b.min.y).toBeCloseTo(PORTAL_SIZE.h, P);
   });
 
+  it('门面贴地（elevation = 0）', () => {
+    const { room, opening } = portalOn('S', 'north');
+    const b = bbox(buildPortalGeometry(room, opening).surface);
+    expect(b.min.y).toBeCloseTo(0, P);
+    expect(b.max.y).toBeCloseTo(PORTAL_SIZE.h, P);
+  });
+
+  // S 净内空 28.5 → north/south 内表面 z = ∓14.25，east/west 内表面 x = ±14.25
+  const H = 14.25;
   const cases: { wall: WallSide; assert: (b: Box3) => void }[] = [
-    // 房间 16×12：north/south 墙在 z = ∓6，east/west 墙在 x = ±8
-    { wall: 'north', assert: (b) => expect(b.min.z).toBeGreaterThan(-6) },
-    { wall: 'south', assert: (b) => expect(b.max.z).toBeLessThan(6) },
-    { wall: 'east', assert: (b) => expect(b.max.x).toBeLessThan(8) },
-    { wall: 'west', assert: (b) => expect(b.min.x).toBeGreaterThan(-8) },
+    { wall: 'north', assert: (b) => expect(b.min.z).toBeGreaterThan(-H) },
+    { wall: 'south', assert: (b) => expect(b.max.z).toBeLessThan(H) },
+    { wall: 'east', assert: (b) => expect(b.max.x).toBeLessThan(H) },
+    { wall: 'west', assert: (b) => expect(b.min.x).toBeGreaterThan(-H) },
   ];
   for (const { wall, assert } of cases) {
     it(`${wall} 墙上的门面向房间内侧偏移（避免与墙 z-fighting）`, () => {
-      const { room, opening } = portalOn(wall);
+      const { room, opening } = portalOn('S', wall);
       assert(bbox(buildPortalGeometry(room, opening).surface));
     });
   }
 
-  it('offset 沿正确方向，不被镜像', () => {
-    const { room, opening } = portalOn('north', 3);
+  it('offset 沿正确方向，不被镜像（M 宽墙的第 2 个门在 x = +15）', () => {
+    const { room, opening } = portalOn('M', 'north', 1);
+    expect(opening.offset).toBe(15);
     const b = bbox(buildPortalGeometry(room, opening).surface);
-    // north 墙 offset 沿 +X → 门面中心应在 x=+3
-    expect((b.min.x + b.max.x) / 2).toBeCloseTo(3, P);
+    expect((b.min.x + b.max.x) / 2).toBeCloseTo(15, P);
   });
 
-  it('east 墙 offset 沿 +Z', () => {
-    const { room, opening } = portalOn('east', 2);
+  it('east 墙 offset 沿 +Z（L 东墙的第 2 个门在 z = +15）', () => {
+    const { room, opening } = portalOn('L', 'east', 1);
+    expect(opening.offset).toBe(15);
     const b = bbox(buildPortalGeometry(room, opening).surface);
-    expect((b.min.z + b.max.z) / 2).toBeCloseTo(2, P);
-  });
-
-  it('elevation 生效', () => {
-    const { room, opening } = portalOn('north', 0, 4);
-    const b = bbox(buildPortalGeometry(room, opening).surface);
-    expect(b.min.y).toBeCloseTo(4, P);
-    expect(b.max.y).toBeCloseTo(7, P);
+    expect((b.min.z + b.max.z) / 2).toBeCloseTo(15, P);
   });
 
   it('门框包住门面（四边都比洞口大一圈）', () => {
-    const { room, opening } = portalOn('north');
+    const { room, opening } = portalOn('S', 'north');
     const built = buildPortalGeometry(room, opening);
     const surface = bbox(built.surface);
     const frame = bbox(built.frame);
@@ -104,85 +89,76 @@ describe('传送门几何（固定样式）', () => {
     expect(frame.min.y).toBeLessThan(surface.min.y);
     expect(frame.max.y).toBeGreaterThan(surface.max.y);
   });
+
+  it('所有规格所有传送门都完全落在房间内部（不穿墙、不顶天花）', () => {
+    for (const spec of ['S', 'M', 'L'] as const) {
+      const room = makeRoom(spec);
+      const size = roomSize(room);
+      for (const opening of roomPortals(room)) {
+        const b = bbox(buildPortalGeometry(room, opening).frame);
+        expect(Math.abs(b.min.x), `${spec}/${opening.id}`).toBeLessThanOrEqual(size.w / 2 + 1e-3);
+        expect(Math.abs(b.max.x), `${spec}/${opening.id}`).toBeLessThanOrEqual(size.w / 2 + 1e-3);
+        expect(Math.abs(b.min.z), `${spec}/${opening.id}`).toBeLessThanOrEqual(size.d / 2 + 1e-3);
+        expect(b.max.y, `${spec}/${opening.id}`).toBeLessThan(size.h);
+      }
+    }
+  });
 });
 
 describe('传送门在场景里', () => {
-  it('每个传送门产出 2 个 mesh（门面 + 门框），并计入 stats', () => {
+  it('每个传送门产出 2 个 mesh（门面 + 门框），数量随规格派生', () => {
+    for (const spec of ['S', 'M', 'L'] as const) {
+      const built = buildRoom(makeRoom(spec), THEME);
+      expect(built.stats.portals, `spec=${spec}`).toBe(specPortalCount(spec));
+      // 4 面墙 + 地板 + 每个传送门 2 个
+      expect(built.stats.meshes).toBe(4 + 1 + specPortalCount(spec) * 2);
+      built.dispose();
+    }
+  });
+
+  it('传送门用固定材质，不走哈希占位色', () => {
+    const built = buildRoom(makeRoom(), THEME);
+    const names = built.materials.list().map((m) => m.name);
+    expect(names).toContain(PORTAL_SURFACE_MATERIAL);
+    expect(names).toContain(PORTAL_FRAME_MATERIAL);
+    built.dispose();
+  });
+
+  it('示例关卡里的传送门数量与规格一致', () => {
     const text = readFileSync(
-      resolve(import.meta.dirname, '../../../examples/etc-piston-floor.roomgraph.yaml'),
+      resolve(import.meta.dirname, '../../../examples/etc-s-piston-floor.roomgraph.yaml'),
       'utf8',
     );
     const loaded = parseDocument(text);
     if (!loaded.ok) throw new Error(JSON.stringify(loaded.errors, null, 2));
 
-    const built = buildScene(loaded.doc, { isolateRoom: 'piston_floor' });
-    expect(built.stats.portals).toBe(4); // 四面墙各一个
-    built.dispose();
-  });
-
-  it('传送门用固定材质，不走哈希占位色', () => {
-    const room = makeRoom([{ id: 'p1', wall: 'north', type: 'portal', size: { w: 2.4, h: 3 } }]);
-    const doc = RoomGraphDocument.parse({
-      schemaVersion: SCHEMA_VERSION,
-      meta: { name: 'T' },
-      themes: [{ id: 'p', surfaces: { floor: 'f', ceiling: 'c', wall: 'w' } }],
-      rooms: [room],
-      connections: [],
-    } satisfies RoomGraphDocumentInput);
-
-    const built = buildScene(doc, { isolateRoom: 'r' });
-    const names = built.materials.list().map((m) => m.name);
-    expect(names).toContain(PORTAL_SURFACE_MATERIAL);
-    expect(names).toContain(PORTAL_FRAME_MATERIAL);
-    // 门面必须自发光 —— 固定样式的核心，保证在灰调场景里一眼可辨
-    const surface = built.materials.list().find((m) => m.name === PORTAL_SURFACE_MATERIAL);
-    expect(surface).toBeDefined();
+    const built = buildRoomFromDocument(loaded.doc, 'piston_floor');
+    expect(built.stats.portals).toBe(4); // S：四面墙各一个
     built.dispose();
   });
 });
 
-describe('单房间隔离模式', () => {
-  function multiRoomDoc() {
-    const text = readFileSync(
-      resolve(import.meta.dirname, '../../../examples/loft-warehouse.roomgraph.yaml'),
-      'utf8',
-    );
-    const loaded = parseDocument(text);
-    if (!loaded.ok) throw new Error('load fail');
-    return loaded.doc;
-  }
-
-  it('只构建指定的那一个房间', () => {
-    const doc = multiRoomDoc();
-    expect(doc.rooms.length).toBe(3);
-    const built = buildScene(doc, { isolateRoom: 'hall' });
-    expect(built.stats.rooms).toBe(1);
-    expect([...built.roomGroups.keys()]).toEqual(['hall']);
+describe('单房间构建', () => {
+  it('房间固定在原点、旋转 0', () => {
+    const built = buildRoom(makeRoom(), THEME);
+    expect(built.root.position.x).toBe(0);
+    expect(built.root.position.y).toBe(0);
+    expect(built.root.position.z).toBe(0);
+    expect(built.root.rotation.y).toBe(0);
     built.dispose();
   });
 
-  it('隔离的房间固定在原点、旋转 0（不走求解器）', () => {
-    const doc = multiRoomDoc();
-    // 非隔离模式下 hall 会被求解到 (0, -12.25)
-    const solved = buildScene(doc);
-    expect(solved.roomGroups.get('hall')?.position.z).toBeCloseTo(-12.25, 2);
-    solved.dispose();
-
-    // 隔离模式必须在原点
-    const isolated = buildScene(doc, { isolateRoom: 'hall' });
-    const group = isolated.roomGroups.get('hall');
-    expect(group?.position.x).toBe(0);
-    expect(group?.position.y).toBe(0);
-    expect(group?.position.z).toBe(0);
-    expect(group?.rotation.y).toBe(0);
-    isolated.dispose();
-  });
-
-  it('隔离一个本来会被求解器旋转的房间也归零', () => {
-    const doc = multiRoomDoc();
-    const built = buildScene(doc, { isolateRoom: 'catwalk_room' });
-    expect(built.roomGroups.get('catwalk_room')?.position.x).toBe(0);
-    expect(built.stats.rooms).toBe(1);
-    built.dispose();
+  it('buildRoomFromDocument 找不到房间时抛错并列出可选项', () => {
+    const doc = parseDocument(`
+schemaVersion: 0.2.0
+meta: { name: T }
+themes:
+  - id: p
+    surfaces: { floor: f, ceiling: c, wall: w }
+rooms:
+  - { id: only_one, spec: S, theme: p }
+`);
+    if (!doc.ok) throw new Error('fixture 解析失败');
+    expect(() => buildRoomFromDocument(doc.doc, 'ghost')).toThrow(/only_one/);
   });
 });

@@ -1,0 +1,154 @@
+# ENTER THE CUBE —— Catwalk Gallery（M 规格）
+#
+#   spec: M  →  占格 2×1  →  外廓 60×30m  →  净内空 58.5×28.5m
+#              →  x ∈ [-29.25, 29.25]，z ∈ [-14.25, 14.25]，层高 18m
+#              →  宽墙(north/south) 各 2 个传送门（offset ±15）
+#                 窄墙(east/west)   各 1 个传送门（offset 0）
+#
+# M 房间在地图生成时允许竖放（60×30 或 30×60）—— 那是游戏侧的事。
+# 编辑器里永远按标准朝向（长边沿 X）编辑，房间整体旋转由生成器处理。
+#
+# 玩法：一条长廊。地面 → 两侧 6m 夹层 → 12m 中央脊桥，三层高度差
+# 让长边成为对枪的主战场，脊桥是制高点但只有两端能上。
+
+schemaVersion: '0.2.0'
+
+meta:
+  name: ETC Catwalk Gallery
+  description: >
+    M 规格长廊。南北两条贯通夹层（6m），东西两端 12m 高平台由中央脊桥相连；
+    上下靠四条楼梯，两条从地面到夹层、两条从夹层到端部平台。
+
+themes:
+  - id: gallery
+    name: Gallery Steel
+    surfaces:
+      floor: concrete_floor_polished
+      ceiling: steel_deck_ceiling
+      wall: concrete_wall_ribbed
+      structure: steel_grate
+    lightPreset: gallery_cool
+    ambientColor: '#1e242a'
+
+rooms:
+  - id: catwalk_gallery
+    name: Catwalk Gallery
+    spec: M
+    theme: gallery
+
+    structures:
+      # ── 6m：南北两条贯通夹层（各 6m 深，贴壁）──────────────────
+      - id: mezz_n
+        type: platform
+        rect: { x: 0, z: -11.2, w: 56, d: 6 }
+        elevation: 6
+        thickness: 0.3
+        railing: [south]
+
+      - id: mezz_s
+        type: platform
+        rect: { x: 0, z: 11.2, w: 56, d: 6 }
+        elevation: 6
+        thickness: 0.3
+        railing: [north]
+
+      # ── 12m：东西两端的高平台（贯通全深，作为脊桥的两个端头）────
+      - id: deck_w
+        type: platform
+        rect: { x: -25.2, z: 0, w: 8, d: 28 }
+        elevation: 12
+        thickness: 0.4
+        railing: [east]
+
+      - id: deck_e
+        type: platform
+        rect: { x: 25.2, z: 0, w: 8, d: 28 }
+        elevation: 12
+        thickness: 0.4
+        railing: [west]
+
+      # ── 12m：中央脊桥，首尾正好停在两个平台的内侧边上 ───────────
+      - id: spine
+        type: catwalk
+        path:
+          - { x: -21.2, z: 0 }
+          - { x: 21.2, z: 0 }
+        elevation: 12
+        width: 3
+        thickness: 0.2
+        railing: both
+
+      # ── 地面 → 夹层（rise 6，踢面 0.19 → tread 0.25 → 32 级 → 进深 8.0）──
+      - id: stair_g_to_mezz_n
+        type: stair
+        from: { x: -12, z: -1 }
+        facing: north
+        fromElevation: 0
+        to: mezz_n
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+      - id: stair_g_to_mezz_s
+        type: stair
+        from: { x: 12, z: 1 }
+        facing: south
+        fromElevation: 0
+        to: mezz_s
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+      # ── 夹层 → 端部平台（同样 rise 6 → 进深 8.0，整段都踩在夹层上）──
+      - id: stair_mezz_n_to_deck_w
+        type: stair
+        from: { x: -14, z: -11.2 }
+        facing: west
+        fromElevation: 6
+        to: deck_w
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+      - id: stair_mezz_s_to_deck_e
+        type: stair
+        from: { x: 14, z: 11.2 }
+        facing: east
+        fromElevation: 6
+        to: deck_e
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+      # ── 地面掩体柱：避开脊桥正下方（z ±1.5）与夹层（|z| ≥ 8.2）──
+      - { id: col_a, type: pillar, at: { x: -18, z: -5 }, size: 1.2, profile: round }
+      - { id: col_b, type: pillar, at: { x: -9, z: 5 }, size: 1.2, profile: round }
+      - { id: col_c, type: pillar, at: { x: 0, z: -5 }, size: 1.2, profile: round }
+      - { id: col_d, type: pillar, at: { x: 9, z: 5 }, size: 1.2, profile: round }
+      - { id: col_e, type: pillar, at: { x: 18, z: -5 }, size: 1.2, profile: round }
+
+    lights:
+      - { id: lamp_w, type: point, at: { x: -20, y: 16, z: 0 }, intensity: 1100, range: 26 }
+      - { id: lamp_c, type: point, at: { x: 0, y: 16, z: 0 }, intensity: 1100, range: 26 }
+      - { id: lamp_e, type: point, at: { x: 20, y: 16, z: 0 }, intensity: 1100, range: 26 }
+      - {
+          id: lamp_mn,
+          type: point,
+          at: { x: 0, y: 5, z: -11 },
+          intensity: 400,
+          range: 18,
+          color: '#9fd4ff',
+        }
+      - {
+          id: lamp_ms,
+          type: point,
+          at: { x: 0, y: 5, z: 11 },
+          intensity: 400,
+          range: 18,
+          color: '#9fd4ff',
+        }
+
+    markers:
+      - { id: preview_start, kind: spawn, at: { x: 0, y: 0, z: 5 } }
+      - { id: perch_w, kind: cover, at: { x: -25, y: 12, z: 0 }, radius: 4 }
+      - { id: perch_e, kind: cover, at: { x: 25, y: 12, z: 0 }, radius: 4 }

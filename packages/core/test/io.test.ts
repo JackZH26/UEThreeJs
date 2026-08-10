@@ -5,7 +5,13 @@ import { parseDocument, serializeDocument, validateDocument } from '@tjre/core';
 import { makeDoc } from './fixtures.js';
 
 const examplesDir = resolve(import.meta.dirname, '../../../examples');
-const EXAMPLES = ['two-rooms.roomgraph.yaml', 'loft-warehouse.roomgraph.yaml'] as const;
+
+/** 每种规格各一个 —— 这样 spec 派生表的任何改动都会被示例回归抓住 */
+const EXAMPLES = [
+  'etc-s-piston-floor.roomgraph.yaml',
+  'etc-m-catwalk-gallery.roomgraph.yaml',
+  'etc-l-atrium.roomgraph.yaml',
+] as const;
 
 describe('示例关卡（CI 回归夹具）', () => {
   for (const name of EXAMPLES) {
@@ -48,7 +54,7 @@ describe('序列化确定性（write-through 的前提）', () => {
 describe('解析错误处理', () => {
   it('strict schema 拒绝未知字段并给出提示', () => {
     const result = parseDocument(`
-schemaVersion: 0.1.0
+schemaVersion: 0.2.0
 meta:
   name: X
   widht: 8
@@ -56,7 +62,6 @@ themes:
   - id: t
     surfaces: { floor: f, ceiling: c, wall: w }
 rooms: []
-connections: []
 `);
     expect(result.ok).toBe(false);
     if (result.ok) return;
@@ -70,7 +75,6 @@ schemaVersion: 9.9.9
 meta: { name: X }
 themes: []
 rooms: []
-connections: []
 `);
     expect(result.ok).toBe(false);
     if (result.ok) return;

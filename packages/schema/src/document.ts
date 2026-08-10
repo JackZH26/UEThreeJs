@@ -1,10 +1,18 @@
 import { z } from 'zod';
-import { Id, PositiveMeters } from './primitives.js';
+import { PositiveMeters } from './primitives.js';
 import { Theme } from './content.js';
-import { Connection, Room } from './room.js';
+import { Room } from './room.js';
 
-/** 当前 schema 版本。破坏性变更必须递增 minor/major 并提供 migrations/。 */
-export const SCHEMA_VERSION = '0.1.0';
+/**
+ * 当前 schema 版本。破坏性变更必须递增 minor/major 并提供 migrations/。
+ *
+ * 0.2.0 的破坏性内容：
+ *   · Room 的 `size` / `doorCount` / `pin` / `wallThickness` 全部移除，改由 `spec` 派生
+ *   · 传送门由 `spec` 派生，不再手写
+ *   · 文档级 `connections` 移除（房间之间靠传送门在运行时连接，不在文档里描述）
+ *   · `meta.entryRoom` / `meta.wallThickness` 移除
+ */
+export const SCHEMA_VERSION = '0.2.0';
 
 /** 允许被本版本代码直接加载的 schema 版本（其余需先跑迁移） */
 export const SUPPORTED_SCHEMA_VERSIONS: readonly string[] = [SCHEMA_VERSION];
@@ -15,11 +23,8 @@ export const DocumentMeta = z
     units: z
       .literal('meters')
       .default('meters')
-      .describe('长度单位。v0.1 固定为米；导出 UE 时按 ×100 转 cm'),
+      .describe('长度单位。v0.2 固定为米；导出 UE 时按 ×100 转 cm'),
     grid: PositiveMeters.default(0.5).describe('编辑吸附网格；校验器会对未对齐的尺寸给出 warning'),
-    wallThickness:
-      PositiveMeters.default(0.2).describe('默认外壳墙厚；相邻房间之间共享一道该厚度的墙'),
-    entryRoom: Id.optional().describe('关卡入口房间 id；可达性检查（R012）的起点'),
     description: z.string().max(2000).optional().describe('给人/AI 看的关卡说明'),
   })
   .describe('关卡级元数据');
@@ -28,9 +33,13 @@ export type DocumentMeta = z.infer<typeof DocumentMeta>;
 /**
  * RoomGraphDocument —— 关卡的**唯一真相**。
  *
- * 设计目标（docs/SCOPE.md P1）：一个 30 房间的关卡序列化后 < 1500 行、< 20k tokens，
- * 可以整份放进 LLM 上下文。因此这里只存**意图**（拓扑关系、参数），
- * 不存任何推导结果（房间世界坐标由 solver 计算，绝不写入文档）。
+ * ⚠️ 名字里的 "Graph" 是历史遗留。当前模型**没有图**：
+ * 每个房间就是一个独立关卡，房间之间由传送门在**运行时**按 seed 拼装，
+ * 文档里不描述任何房间间关系。`rooms` 是一个数组只是为了允许把同一批
+ * 房间放在一个文件里当**房间库**用；一房一文件是推荐用法。
+ *
+ * 设计目标（docs/SCOPE.md P1）：文档只存**意图**（规格、内部结构参数），
+ * 不存任何推导结果 —— 尺寸、传送门、世界坐标一律不写入。
  */
 export const RoomGraphDocument = z
   .strictObject({
@@ -39,8 +48,7 @@ export const RoomGraphDocument = z
       .describe(`文档遵循的 schema 版本。当前代码支持：${SUPPORTED_SCHEMA_VERSIONS.join(', ')}`),
     meta: DocumentMeta,
     themes: z.array(Theme).min(1).describe('主题库；每个房间必须引用其中之一'),
-    rooms: z.array(Room).default([]),
-    connections: z.array(Connection).default([]).describe('房间之间的串联关系'),
+    rooms: z.array(Room).default([]).describe('房间列表。每个房间是一个独立关卡。'),
   })
   .describe('RoomGraph 关卡文档 —— 关卡的唯一真相');
 export type RoomGraphDocument = z.infer<typeof RoomGraphDocument>;
@@ -61,6 +69,5 @@ export function createEmptyDocument(name: string): RoomGraphDocument {
       },
     ],
     rooms: [],
-    connections: [],
   } satisfies RoomGraphDocumentInput);
 }

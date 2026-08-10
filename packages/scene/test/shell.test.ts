@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
-import type { BufferGeometry, Box3 } from 'three';
-import { RoomGraphDocument, SCHEMA_VERSION } from '@tjre/schema';
-import type { Room, RoomGraphDocumentInput, WallSide } from '@tjre/schema';
+import { Box3, Vector3 } from 'three';
+import type { BufferGeometry } from 'three';
+import { GRID_UNIT, Room, WALL_SIDES, WALL_T, roomSize, specOuterPlan } from '@tjre/schema';
+import type { RoomSpec, WallSide } from '@tjre/schema';
 import { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from '@tjre/scene';
 
 /**
@@ -10,40 +10,21 @@ import { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from '@tj
  * 所以墙面开洞是否正确可以**机器验证**，不必靠肉眼看 3D。
  */
 
-const T = 0.2; // wallThickness
-
 /**
  * 断言精度只到 5 位小数（约 1e-5）。
  *
  * three.js 的 BufferAttribute 用 **Float32Array** 存顶点，只有约 7 位十进制
  * 有效数字：0.1 存进去再读出来是 0.10000000149011612。断言更高精度必然失败，
  * 且失败原因与几何正确性无关。米级建筑尺寸下 1e-5 远小于任何有意义的误差。
+ *
+ * 注意本文件的坐标最大到 30 —— 7 位有效数字下绝对误差约 3e-6，仍在 1e-5 内。
  */
 const P = 5;
 
-/** schema 里 rooms 带 `.default([])`，输入类型上是可选的，需先 NonNullable 再取元素 */
-type RoomInput = NonNullable<RoomGraphDocumentInput['rooms']>[number];
+type RoomInput = Parameters<typeof Room.parse>[0];
 
-function makeRoom(overrides: Partial<RoomInput> = {}): Room {
-  const input: RoomGraphDocumentInput = {
-    schemaVersion: SCHEMA_VERSION,
-    meta: { name: 'T' },
-    themes: [{ id: 'p', surfaces: { floor: 'f', ceiling: 'c', wall: 'w' } }],
-    rooms: [
-      {
-        id: 'r',
-        size: { w: 8, d: 6, h: 4 },
-        theme: 'p',
-        doorCount: 0,
-        ...overrides,
-      },
-    ],
-    connections: [],
-  };
-  const doc = RoomGraphDocument.parse(input);
-  const room = doc.rooms[0];
-  if (room === undefined) throw new Error('fixture 构造失败');
-  return room;
+function makeRoom(spec: RoomSpec = 'S', overrides: Record<string, unknown> = {}): Room {
+  return Room.parse({ id: 'r', spec, theme: 'p', ...overrides } satisfies RoomInput as RoomInput);
 }
 
 function bbox(geometry: BufferGeometry): Box3 {
@@ -53,7 +34,7 @@ function bbox(geometry: BufferGeometry): Box3 {
   return box;
 }
 
-/** 判断某个点是否落在几何体的某个三角形所覆盖的平面区域内（粗判：用顶点集合） */
+/** 判断几何体是否存在一个顶点落在目标点附近 */
 function hasVertexNear(geometry: BufferGeometry, target: Vector3, tolerance = 1e-4): boolean {
   const position = geometry.getAttribute('position');
   const v = new Vector3();
@@ -64,161 +45,244 @@ function hasVertexNear(geometry: BufferGeometry, target: Vector3, tolerance = 1e
   return false;
 }
 
-describe('墙面朝向与位置', () => {
-  const cases: { wall: WallSide; expect: (b: Box3) => void }[] = [
+describe('墙面朝向与位置（S：净内空 28.5 × 28.5 × 12，半尺寸 ±14.25）', () => {
+  const H = 14.25; // 半宽 = 半深
+  const OUT = H + WALL_T; // = 15 = GRID_UNIT / 2
+
+  const cases: { wall: WallSide; assert: (b: Box3) => void }[] = [
     {
-      // north 朝 -Z：内表面在 z = -3，向外长到 z = -3.1
+      // north 朝 -Z：内表面 z = -14.25，向外长完整墙厚到 z = -15
       wall: 'north',
-      expect: (b) => {
-        expect(b.min.z).toBeCloseTo(-3 - T / 2, P);
-        expect(b.max.z).toBeCloseTo(-3, P);
-        expect(b.min.x).toBeCloseTo(-4, P); // 沿 X 跨 size.w = 8
-        expect(b.max.x).toBeCloseTo(4, P);
+      assert: (b) => {
+        expect(b.min.z).toBeCloseTo(-OUT, P);
+        expect(b.max.z).toBeCloseTo(-H, P);
+        expect(b.min.x).toBeCloseTo(-H, P);
+        expect(b.max.x).toBeCloseTo(H, P);
       },
     },
     {
       wall: 'south',
-      expect: (b) => {
-        expect(b.min.z).toBeCloseTo(3, P);
-        expect(b.max.z).toBeCloseTo(3 + T / 2, P);
+      assert: (b) => {
+        expect(b.min.z).toBeCloseTo(H, P);
+        expect(b.max.z).toBeCloseTo(OUT, P);
       },
     },
     {
-      // east 朝 +X：内表面 x = 4，沿 Z 跨 size.d = 6
       wall: 'east',
-      expect: (b) => {
-        expect(b.min.x).toBeCloseTo(4, P);
-        expect(b.max.x).toBeCloseTo(4 + T / 2, P);
-        expect(b.min.z).toBeCloseTo(-3, P);
-        expect(b.max.z).toBeCloseTo(3, P);
+      assert: (b) => {
+        expect(b.min.x).toBeCloseTo(H, P);
+        expect(b.max.x).toBeCloseTo(OUT, P);
+        expect(b.min.z).toBeCloseTo(-H, P);
+        expect(b.max.z).toBeCloseTo(H, P);
       },
     },
     {
       wall: 'west',
-      expect: (b) => {
-        expect(b.min.x).toBeCloseTo(-4 - T / 2, P);
-        expect(b.max.x).toBeCloseTo(-4, P);
+      assert: (b) => {
+        expect(b.min.x).toBeCloseTo(-OUT, P);
+        expect(b.max.x).toBeCloseTo(-H, P);
       },
     },
   ];
 
-  for (const { wall, expect: assert } of cases) {
-    it(`${wall} 墙位于正确的内表面并向外长出半个墙厚`, () => {
-      const { geometry } = buildWallGeometry(makeRoom(), wall, T);
-      assert(bbox(geometry));
+  for (const { wall, assert } of cases) {
+    it(`${wall} 墙贴在内表面上，向外长出完整墙厚 ${WALL_T}m`, () => {
+      assert(bbox(buildWallGeometry(makeRoom(), wall).geometry));
     });
   }
 
-  it('所有墙的高度都是 [0, h]', () => {
-    for (const wall of ['north', 'south', 'east', 'west'] as const) {
-      const b = bbox(buildWallGeometry(makeRoom(), wall, T).geometry);
+  it('所有墙的高度都是 [0, 层高]', () => {
+    for (const wall of WALL_SIDES) {
+      const b = bbox(buildWallGeometry(makeRoom(), wall).geometry);
       expect(b.min.y).toBeCloseTo(0, P);
-      expect(b.max.y).toBeCloseTo(4, P);
+      expect(b.max.y).toBeCloseTo(12, P);
     }
   });
 });
 
+/**
+ * ⭐ 可互换性的地基。
+ *
+ * 房间外壳的水平 AABB 必须**恰好等于占格尺寸**（30 / 60m 的整数倍）。
+ * 只要这条成立，任意两个房间在格位网格里就能无缝对接、传送门自动对齐。
+ * 墙厚、净内空、格位三者的关系一旦被改坏，这条会立刻失败。
+ */
+describe('外廓 AABB = 占格尺寸', () => {
+  for (const spec of ['S', 'M', 'L'] as const) {
+    it(`${spec}：外壳水平范围正好是 ${specOuterPlan(spec).w} × ${specOuterPlan(spec).d}m`, () => {
+      const room = makeRoom(spec);
+      const union = new Box3();
+      for (const wall of WALL_SIDES) union.union(bbox(buildWallGeometry(room, wall).geometry));
+      union.union(bbox(buildFloorGeometry(room)));
+      union.union(bbox(buildCeilingGeometry(room)));
+
+      const outer = specOuterPlan(spec);
+      expect(union.max.x - union.min.x).toBeCloseTo(outer.w, P);
+      expect(union.max.z - union.min.z).toBeCloseTo(outer.d, P);
+      // 居中：房间原点在外廓中心
+      expect(union.min.x).toBeCloseTo(-outer.w / 2, P);
+      expect(union.min.z).toBeCloseTo(-outer.d / 2, P);
+      // 竖向：地板底 -WALL_T，天花顶 层高 + WALL_T
+      expect(union.min.y).toBeCloseTo(-WALL_T, P);
+      expect(union.max.y).toBeCloseTo(roomSize(room).h + WALL_T, P);
+      // 外廓必须是格位整数倍
+      expect((union.max.x - union.min.x) % GRID_UNIT).toBeCloseTo(0, P);
+    });
+  }
+});
+
 describe('洞口', () => {
-  it('无洞口时不产生 hole', () => {
-    const { openingCount } = buildWallGeometry(makeRoom(), 'north', T);
-    expect(openingCount).toBe(0);
+  it('每面墙都自带派生传送门的洞 —— 没有"零洞口"的墙', () => {
+    // S：四面各 1；M：宽墙 2 / 窄墙 1；L：每面 2
+    const expected: Record<RoomSpec, Record<WallSide, number>> = {
+      S: { north: 1, south: 1, east: 1, west: 1 },
+      M: { north: 2, south: 2, east: 1, west: 1 },
+      L: { north: 2, south: 2, east: 2, west: 2 },
+    };
+    for (const spec of ['S', 'M', 'L'] as const) {
+      const room = makeRoom(spec);
+      for (const wall of WALL_SIDES) {
+        expect(buildWallGeometry(room, wall).openingCount, `${spec}/${wall}`).toBe(
+          expected[spec][wall],
+        );
+      }
+    }
   });
 
-  it('洞口数量与该墙上的 openings 一致，且只算本墙的', () => {
-    const room = makeRoom({
-      doorCount: 2,
+  it('手写开口叠加在派生传送门之上', () => {
+    const room = makeRoom('S', {
       openings: [
-        { id: 'a', wall: 'north', type: 'door', offset: 0, size: { w: 1.5, h: 2.4 } },
-        { id: 'b', wall: 'north', type: 'arch', offset: 3, size: { w: 1, h: 2.2 } },
-        { id: 'c', wall: 'south', type: 'window', offset: 0, size: { w: 2, h: 1 }, elevation: 2 },
+        {
+          id: 'w1',
+          wall: 'north',
+          type: 'window',
+          offset: 8,
+          size: { w: 2, h: 1.5 },
+          elevation: 4,
+        },
+        {
+          id: 'w2',
+          wall: 'north',
+          type: 'window',
+          offset: -8,
+          size: { w: 2, h: 1.5 },
+          elevation: 4,
+        },
+        {
+          id: 'w3',
+          wall: 'south',
+          type: 'window',
+          offset: 0,
+          size: { w: 2, h: 1.5 },
+          elevation: 4,
+        },
       ],
     });
-    expect(buildWallGeometry(room, 'north', T).openingCount).toBe(2);
-    expect(buildWallGeometry(room, 'south', T).openingCount).toBe(1);
-    expect(buildWallGeometry(room, 'east', T).openingCount).toBe(0);
+    expect(buildWallGeometry(room, 'north').openingCount).toBe(3); // 1 传送门 + 2 窗
+    expect(buildWallGeometry(room, 'south').openingCount).toBe(2);
+    expect(buildWallGeometry(room, 'east').openingCount).toBe(1);
+  });
+
+  it('派生传送门的洞口位置与尺寸正确（S 北墙：居中，3.0 × 3.2）', () => {
+    const { geometry } = buildWallGeometry(makeRoom(), 'north');
+    // 内表面 z = -14.25；洞口 x ∈ [-1.5, 1.5]，y ∈ [0, 3.2]
+    expect(hasVertexNear(geometry, new Vector3(-1.5, 0, -14.25))).toBe(true);
+    expect(hasVertexNear(geometry, new Vector3(1.5, 3.2, -14.25))).toBe(true);
+  });
+
+  it('M 宽墙上的两个传送门分别在 ±15', () => {
+    const { geometry } = buildWallGeometry(makeRoom('M'), 'north');
+    // M 净深 28.5 → 内表面 z = -14.25
+    for (const cx of [-15, 15]) {
+      expect(hasVertexNear(geometry, new Vector3(cx - 1.5, 0, -14.25)), `左沿 @${cx}`).toBe(true);
+      expect(hasVertexNear(geometry, new Vector3(cx + 1.5, 3.2, -14.25)), `右上 @${cx}`).toBe(true);
+    }
   });
 
   /**
    * 关键回归测试：`offset` 的方向不能被镜像。
-   * north 墙的 offset 沿 +X，所以 offset=+3 的洞口顶点必须出现在 x=+3 附近，
-   * 而不是 x=-3。这是"墙面几何直接生成在房间局部坐标系"要防的主要 bug。
+   * north 墙的 offset 沿 +X，所以 offset=+8 的洞口顶点必须出现在 x=+8 附近，
+   * 而不是 x=-8。这是"墙面几何直接生成在房间局部坐标系"要防的主要 bug。
    */
   it('north 墙洞口的 offset 沿 +X，不被镜像', () => {
-    const room = makeRoom({
-      doorCount: 1,
-      openings: [{ id: 'd', wall: 'north', type: 'door', offset: 3, size: { w: 1, h: 2 } }],
+    const room = makeRoom('S', {
+      openings: [
+        { id: 'w', wall: 'north', type: 'window', offset: 8, size: { w: 2, h: 2 }, elevation: 3 },
+      ],
     });
-    const { geometry } = buildWallGeometry(room, 'north', T);
-    // 洞口左右边界应在 x = 2.5 与 3.5，高度 0..2，内表面 z = -3
-    expect(hasVertexNear(geometry, new Vector3(2.5, 0, -3))).toBe(true);
-    expect(hasVertexNear(geometry, new Vector3(3.5, 2, -3))).toBe(true);
+    const { geometry } = buildWallGeometry(room, 'north');
+    expect(hasVertexNear(geometry, new Vector3(7, 3, -14.25))).toBe(true);
+    expect(hasVertexNear(geometry, new Vector3(9, 5, -14.25))).toBe(true);
     // 镜像位置不应存在洞口顶点
-    expect(hasVertexNear(geometry, new Vector3(-2.5, 0, -3))).toBe(false);
-    expect(hasVertexNear(geometry, new Vector3(-3.5, 2, -3))).toBe(false);
+    expect(hasVertexNear(geometry, new Vector3(-7, 3, -14.25))).toBe(false);
+    expect(hasVertexNear(geometry, new Vector3(-9, 5, -14.25))).toBe(false);
   });
 
   it('east 墙洞口的 offset 沿 +Z，不被镜像', () => {
-    const room = makeRoom({
-      doorCount: 1,
-      openings: [{ id: 'd', wall: 'east', type: 'door', offset: 2, size: { w: 1, h: 2 } }],
+    const room = makeRoom('S', {
+      openings: [
+        { id: 'w', wall: 'east', type: 'window', offset: 6, size: { w: 2, h: 2 }, elevation: 3 },
+      ],
     });
-    const { geometry } = buildWallGeometry(room, 'east', T);
-    expect(hasVertexNear(geometry, new Vector3(4, 0, 1.5))).toBe(true);
-    expect(hasVertexNear(geometry, new Vector3(4, 2, 2.5))).toBe(true);
-    expect(hasVertexNear(geometry, new Vector3(4, 0, -1.5))).toBe(false);
+    const { geometry } = buildWallGeometry(room, 'east');
+    expect(hasVertexNear(geometry, new Vector3(14.25, 3, 5))).toBe(true);
+    expect(hasVertexNear(geometry, new Vector3(14.25, 5, 7))).toBe(true);
+    expect(hasVertexNear(geometry, new Vector3(14.25, 3, -5))).toBe(false);
   });
 
   it('夹层高度的洞口 elevation 生效', () => {
-    const room = makeRoom({
-      size: { w: 8, d: 6, h: 10 },
-      doorCount: 1,
+    const room = makeRoom('L', {
       openings: [
-        { id: 'd', wall: 'north', type: 'door', offset: 0, size: { w: 1.6, h: 2.4 }, elevation: 4 },
+        {
+          id: 'd',
+          wall: 'north',
+          type: 'window',
+          offset: 0,
+          size: { w: 1.6, h: 2.4 },
+          elevation: 14,
+        },
       ],
     });
-    const { geometry } = buildWallGeometry(room, 'north', T);
-    // 洞口底沿 y=4，顶沿 y=6.4
-    expect(hasVertexNear(geometry, new Vector3(-0.8, 4, -3))).toBe(true);
-    expect(hasVertexNear(geometry, new Vector3(0.8, 6.4, -3))).toBe(true);
-    // 地面高度处不应有洞口顶点
-    expect(hasVertexNear(geometry, new Vector3(-0.8, 0, -3))).toBe(false);
-  });
-
-  it('开洞后三角形数量比实心墙多（Earcut 确实生效）', () => {
-    const solid = buildWallGeometry(makeRoom(), 'north', T).geometry;
-    const holed = buildWallGeometry(
-      makeRoom({
-        doorCount: 1,
-        openings: [{ id: 'd', wall: 'north', type: 'door', offset: 0, size: { w: 1.5, h: 2.4 } }],
-      }),
-      'north',
-      T,
-    ).geometry;
-    const count = (g: BufferGeometry): number => g.getAttribute('position').count;
-    expect(count(holed)).toBeGreaterThan(count(solid));
+    // L 净宽/深 58.5 → 内表面 z = -29.25
+    const { geometry } = buildWallGeometry(room, 'north');
+    expect(hasVertexNear(geometry, new Vector3(-0.8, 14, -29.25))).toBe(true);
+    expect(hasVertexNear(geometry, new Vector3(0.8, 16.4, -29.25))).toBe(true);
+    // 地面高度处不应有这个洞口的顶点（但传送门在 x=±15，不在 x=±0.8）
+    expect(hasVertexNear(geometry, new Vector3(-0.8, 0, -29.25))).toBe(false);
   });
 });
 
 describe('地板与天花', () => {
-  it('地板顶面精确落在 y = 0，向下长出半个墙厚', () => {
-    const b = bbox(buildFloorGeometry(makeRoom(), T));
+  it('地板顶面精确落在 y = 0，向下长出完整墙厚', () => {
+    const b = bbox(buildFloorGeometry(makeRoom()));
     expect(b.max.y).toBeCloseTo(0, P);
-    expect(b.min.y).toBeCloseTo(-T / 2, P);
-    expect(b.min.x).toBeCloseTo(-4, P);
-    expect(b.max.x).toBeCloseTo(4, P);
-    expect(b.min.z).toBeCloseTo(-3, P);
-    expect(b.max.z).toBeCloseTo(3, P);
+    expect(b.min.y).toBeCloseTo(-WALL_T, P);
+    // 地板只铺净内空范围（墙自己占外圈）
+    expect(b.min.x).toBeCloseTo(-14.25, P);
+    expect(b.max.x).toBeCloseTo(14.25, P);
+    expect(b.min.z).toBeCloseTo(-14.25, P);
+    expect(b.max.z).toBeCloseTo(14.25, P);
   });
 
-  it('天花底面精确落在 y = room.size.h', () => {
-    const b = bbox(buildCeilingGeometry(makeRoom(), T));
-    expect(b.min.y).toBeCloseTo(4, P);
-    expect(b.max.y).toBeCloseTo(4 + T / 2, P);
+  it('天花底面精确落在层高处', () => {
+    const b = bbox(buildCeilingGeometry(makeRoom()));
+    expect(b.min.y).toBeCloseTo(12, P);
+    expect(b.max.y).toBeCloseTo(12 + WALL_T, P);
+  });
+
+  it('层高随规格变化（S 12 / M 18 / L 24）', () => {
+    for (const [spec, h] of [
+      ['S', 12],
+      ['M', 18],
+      ['L', 24],
+    ] as const) {
+      expect(bbox(buildCeilingGeometry(makeRoom(spec))).min.y).toBeCloseTo(h, P);
+    }
   });
 
   it('地板顶面与墙底对齐 —— 不留缝', () => {
-    const floor = bbox(buildFloorGeometry(makeRoom(), T));
-    const wall = bbox(buildWallGeometry(makeRoom(), 'north', T).geometry);
+    const floor = bbox(buildFloorGeometry(makeRoom()));
+    const wall = bbox(buildWallGeometry(makeRoom(), 'north').geometry);
     expect(floor.max.y).toBeCloseTo(wall.min.y, P);
   });
 });

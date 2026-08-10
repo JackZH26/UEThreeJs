@@ -1,14 +1,5 @@
 import { z } from 'zod';
-import {
-  HexColor,
-  Id,
-  Meters,
-  PointXYZ,
-  PositiveMeters,
-  Size3,
-  Tags,
-  UserData,
-} from './primitives.js';
+import { HexColor, Id, PointXYZ, PositiveMeters, Size3, Tags, UserData } from './primitives.js';
 
 /**
  * Prop —— 来自预设库的道具实例。
@@ -113,16 +104,10 @@ export const Theme = z
   .describe('主题：材质 + 灯光预设集合');
 export type Theme = z.infer<typeof Theme>;
 
-/** 供 Phase 1 solver 使用的手动锚定 */
-export const Pin = z
-  .strictObject({
-    x: Meters.describe('世界坐标 X（房间地面中心）'),
-    z: Meters.describe('世界坐标 Z（房间地面中心）'),
-    y: Meters.default(0).describe('世界坐标 Y（地面高度）'),
-    rotationY: z
-      .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
-      .default(0)
-      .describe('房间朝向，仅允许 90° 的整数倍（v0.1 限制）'),
-  })
-  .describe('把房间钉在固定世界坐标上；solver 以被 pin 的房间为锚展开布局');
-export type Pin = z.infer<typeof Pin>;
+/**
+ * ── 已移除：`Pin` ────────────────────────────────────────────
+ *
+ * v0.1 有一个 `Pin`（世界坐标 + 旋转），供布局求解器把房间钉在固定位置。
+ * v0.2 起每个房间就是一个独立关卡、永远在原点，房间朝向由游戏侧在拼装时
+ * 决定 —— 世界坐标在本项目里不再是一个有意义的概念，求解器与 Pin 一并删除。
+ */

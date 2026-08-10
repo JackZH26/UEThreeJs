@@ -1,0 +1,123 @@
+# ENTER THE CUBE —— #8 Piston Floor（S 规格）
+#
+# 一个房间 = 一个独立关卡。文件里**不写**尺寸和传送门：
+#   spec: S  →  占格 1×1  →  外廓 30×30m  →  净内空 28.5×28.5m（±14.25）
+#              →  层高 12m  →  四面墙各 1 个传送门（居中，3.0×3.2m）
+# 跑 `pnpm cli describe examples/etc-s-piston-floor.roomgraph.yaml` 看派生结果。
+#
+# 玩法：地面是一片起伏的活塞柱阵，柱高不一，玩家必须在柱顶之间跳跃。
+# 检修廊桥沿四壁走一圈提供狙击位；上廊桥只有一条楼梯，是争夺点。
+#
+# ── 平面分带（这是让各结构互不打架的关键）────────────────────
+#   中央   |x|,|z| ≤ 10.6   活塞柱阵（4×4，柱心 ±3 / ±9，边长 3.2）
+#   环带   10.7 ~ 12.4      楼梯跑道（宽 1.6，中心 ±11.5）
+#   贴壁   12.45 ~ 14.25    检修廊桥（宽 1.8，中心 ±13.35）
+
+schemaVersion: '0.2.0'
+
+meta:
+  name: 'ETC #8 Piston Floor'
+  description: >
+    S 规格房间。4×4 活塞柱阵占据中央，柱高 1.5~4.5m 交错；
+    贴壁一圈检修廊桥（6m）由西南角平台接入，平台靠一条单跑楼梯上去。
+
+themes:
+  - id: industrial
+    name: Industrial Concrete
+    surfaces:
+      floor: concrete_floor_worn
+      ceiling: concrete_ceiling
+      wall: concrete_wall_panel
+      structure: steel_grate
+    lightPreset: warehouse_sodium
+    ambientColor: '#2a2622'
+
+rooms:
+  - id: piston_floor
+    name: Piston Floor
+    spec: S
+    theme: industrial
+
+    structures:
+      # ── 活塞柱阵：4×4，柱心间距 6m，整体占 ±10.6 ──────────────
+      # 高度按行交错，形成需要节奏感的跳跃路线
+      - { id: p00, type: pillar, at: { x: -9, z: -9 }, size: 3.2, fromElevation: 0, height: 1.5 }
+      - { id: p01, type: pillar, at: { x: -3, z: -9 }, size: 3.2, fromElevation: 0, height: 3.0 }
+      - { id: p02, type: pillar, at: { x: 3, z: -9 }, size: 3.2, fromElevation: 0, height: 1.5 }
+      - { id: p03, type: pillar, at: { x: 9, z: -9 }, size: 3.2, fromElevation: 0, height: 4.5 }
+
+      - { id: p10, type: pillar, at: { x: -9, z: -3 }, size: 3.2, fromElevation: 0, height: 3.0 }
+      - { id: p11, type: pillar, at: { x: -3, z: -3 }, size: 3.2, fromElevation: 0, height: 4.5 }
+      - { id: p12, type: pillar, at: { x: 3, z: -3 }, size: 3.2, fromElevation: 0, height: 3.0 }
+      - { id: p13, type: pillar, at: { x: 9, z: -3 }, size: 3.2, fromElevation: 0, height: 1.5 }
+
+      - { id: p20, type: pillar, at: { x: -9, z: 3 }, size: 3.2, fromElevation: 0, height: 4.5 }
+      - { id: p21, type: pillar, at: { x: -3, z: 3 }, size: 3.2, fromElevation: 0, height: 1.5 }
+      - { id: p22, type: pillar, at: { x: 3, z: 3 }, size: 3.2, fromElevation: 0, height: 4.5 }
+      - { id: p23, type: pillar, at: { x: 9, z: 3 }, size: 3.2, fromElevation: 0, height: 3.0 }
+
+      - { id: p30, type: pillar, at: { x: -9, z: 9 }, size: 3.2, fromElevation: 0, height: 1.5 }
+      - { id: p31, type: pillar, at: { x: -3, z: 9 }, size: 3.2, fromElevation: 0, height: 4.5 }
+      - { id: p32, type: pillar, at: { x: 3, z: 9 }, size: 3.2, fromElevation: 0, height: 3.0 }
+      - { id: p33, type: pillar, at: { x: 9, z: 9 }, size: 3.2, fromElevation: 0, height: 1.5 }
+
+      # ── 西南角平台：楼梯落点 + 廊桥两端的接入点 ────────────────
+      # 占 x,z ∈ [-14.2, -9.2]，两边贴到墙
+      - id: corner_deck
+        type: platform
+        rect: { x: -11.7, z: -11.7, w: 5, d: 5 }
+        elevation: 6
+        thickness: 0.3
+        railing: [south, east]
+
+      # ── 检修廊桥：从平台两条边出发，贴壁绕一圈回到平台另一条边 ──
+      # 起点/终点都停在平台边界上，所以与平台首尾相接、不叠面
+      # （同高度叠面会 z-fighting）
+      - id: catwalk_ring
+        type: catwalk
+        path:
+          - { x: -13.35, z: -9.2 }
+          - { x: -13.35, z: 13.35 }
+          - { x: 13.35, z: 13.35 }
+          - { x: 13.35, z: -13.35 }
+          - { x: -9.2, z: -13.35 }
+        elevation: 6
+        width: 1.8
+        thickness: 0.15
+        railing: both
+
+      # ── 上廊桥的唯一路径 ────────────────────────────────────
+      # 进深由踢面高度按 Blondel 公式推导，**不能直接指定**：
+      #   rise 6m，stepHeight 0.19 → tread 0.25 → 32 级 → 进深 8.0m
+      #   顶端 = (-11.5, -1.7 - 8.0) = (-11.5, -9.7)，落在 corner_deck 内。
+      # R046 会核对这一点；改 stepHeight 就得重算 from。
+      - id: stair_to_deck
+        type: stair
+        from: { x: -11.5, z: -1.7 }
+        facing: north
+        fromElevation: 0
+        to: corner_deck
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+    lights:
+      - {
+          id: lamp_c,
+          type: point,
+          at: { x: 0, y: 10, z: 0 },
+          intensity: 900,
+          range: 22,
+          color: '#ffd9a0',
+        }
+      - { id: lamp_nw, type: point, at: { x: -9, y: 9, z: -9 }, intensity: 500, range: 16 }
+      - { id: lamp_se, type: point, at: { x: 9, y: 9, z: 9 }, intensity: 500, range: 16 }
+
+    markers:
+      # 编辑器第一人称漫游的起始点（游戏里的出生点由对局逻辑决定）
+      - { id: preview_start, kind: spawn, at: { x: 0, y: 0, z: 13 } }
+      - { id: snipe_deck, kind: cover, at: { x: -11.7, y: 6, z: -11.7 }, radius: 3 }
+
+    userData:
+      hazard: crush
+      pistonCycleSeconds: 4

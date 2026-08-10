@@ -1,19 +1,21 @@
 import type { BufferGeometry } from 'three';
 import { ExtrudeGeometry, Path, Shape } from 'three';
 import type { Opening, Room, WallSide } from '@tjre/schema';
-import { WALL_SPAN_AXIS } from '@tjre/schema';
+import { WALL_SPAN_AXIS, WALL_T, roomOpenings, roomSize } from '@tjre/schema';
 
 /**
  * ============================================================
  *  房间外壳几何 —— 带洞口的墙面 + 地板 + 天花
  * ============================================================
  *
- *  · `room.size` 是**内部净尺寸**，墙体从内表面向**外**长出
- *  · 每面墙只长出 `wallThickness / 2`：
- *      两个相邻房间各出一半，合起来正好填满求解器留出的 `wallThickness` 间隙。
- *      这样两面墙**互不重叠**，也就没有 z-fighting；若各自长出完整厚度，
- *      两面墙会精确重合并互相闪烁。
+ *  · 净内空尺寸由 `roomSize(room)` 从 spec 派生，墙体从内表面向**外**长出
+ *  · 每面墙长出**完整** `WALL_T`（0.75m）。
+ *      于是外廓 AABB 恰好等于占格尺寸（30/60m 的整数倍），任意两个房间
+ *      都能无缝对接。v0.1 曾让每面墙只出半厚（相邻房间各出一半共享一道墙），
+ *      那是"关卡=多房间连通空间"模型的产物；现在每个房间是独立关卡，
+ *      各自带完整外壳。
  *  · 洞口用 `Shape` + `holes` 挖出，交给 three.js 内置的 Earcut 三角化
+ *  · 洞口取 `roomOpenings(room)` —— **必须**包含派生传送门，否则墙上不开洞
  *
  *  本模块产出的几何体**已经位于房间局部坐标系**（原点 = 地面矩形中心，
  *  y 向上，与 structures / markers 的基准一致）。`buildScene` 只需再套一层
@@ -40,8 +42,9 @@ interface UVE {
  * （`normal_fragment_begin` 里按 `gl_FrontFacing` 取反），光照结果正确。
  */
 function mapper(room: Room, wall: WallSide): (p: UVE) => [number, number, number] {
-  const halfW = room.size.w / 2;
-  const halfD = room.size.d / 2;
+  const size = roomSize(room);
+  const halfW = size.w / 2;
+  const halfD = size.d / 2;
   switch (wall) {
     case 'north': // 朝 -Z
       return ({ u, v, e }) => [u, v, -halfD - e];
@@ -69,11 +72,12 @@ function remap(geometry: BufferGeometry, map: (p: UVE) => [number, number, numbe
 
 /** 墙面在其延展轴上的净跨度 */
 function wallSpan(room: Room, wall: WallSide): number {
-  return WALL_SPAN_AXIS[wall] === 'x' ? room.size.w : room.size.d;
+  const size = roomSize(room);
+  return WALL_SPAN_AXIS[wall] === 'x' ? size.w : size.d;
 }
 
 function openingsOnWall(room: Room, wall: WallSide): Opening[] {
-  return room.openings.filter((o) => o.wall === wall);
+  return roomOpenings(room).filter((o) => o.wall === wall);
 }
 
 /**
@@ -83,7 +87,7 @@ function openingsOnWall(room: Room, wall: WallSide): Opening[] {
  */
 function wallShape(room: Room, wall: WallSide): Shape {
   const half = wallSpan(room, wall) / 2;
-  const height = room.size.h;
+  const height = roomSize(room).h;
 
   const shape = new Shape();
   shape.moveTo(-half, 0);
@@ -124,19 +128,20 @@ export interface WallGeometryResult {
 export function buildWallGeometry(
   room: Room,
   wall: WallSide,
-  wallThickness: number,
+  wallThickness: number = WALL_T,
 ): WallGeometryResult {
   const shape = wallShape(room, wall);
-  const geometry = extrude(shape, wallThickness / 2);
+  const geometry = extrude(shape, wallThickness);
   remap(geometry, mapper(room, wall));
   geometry.name = `${room.id}_wall_${wall}`;
   return { wall, geometry, openingCount: shape.holes.length };
 }
 
-/** 内部footprint 的水平矩形，用于地板 / 天花 */
+/** 内部净内空的水平矩形，用于地板 / 天花 */
 function footprintShape(room: Room): Shape {
-  const hw = room.size.w / 2;
-  const hd = room.size.d / 2;
+  const size = roomSize(room);
+  const hw = size.w / 2;
+  const hd = size.d / 2;
   const shape = new Shape();
   shape.moveTo(-hw, -hd);
   shape.lineTo(hw, -hd);
@@ -146,19 +151,20 @@ function footprintShape(room: Room): Shape {
   return shape;
 }
 
-/** 地板：顶面精确落在 y = 0，向下长出半个墙厚 */
-export function buildFloorGeometry(room: Room, wallThickness: number): BufferGeometry {
-  const geometry = extrude(footprintShape(room), wallThickness / 2);
+/** 地板：顶面精确落在 y = 0，向下长出一个完整墙厚 */
+export function buildFloorGeometry(room: Room, wallThickness: number = WALL_T): BufferGeometry {
+  const geometry = extrude(footprintShape(room), wallThickness);
   // shape 的 (x, y) 是水平面的 (x, z)，挤出方向 e 变成向下
   remap(geometry, ({ u, v, e }) => [u, -e, v]);
   geometry.name = `${room.id}_floor`;
   return geometry;
 }
 
-/** 天花：底面精确落在 y = room.size.h */
-export function buildCeilingGeometry(room: Room, wallThickness: number): BufferGeometry {
-  const geometry = extrude(footprintShape(room), wallThickness / 2);
-  remap(geometry, ({ u, v, e }) => [u, room.size.h + e, v]);
+/** 天花：底面精确落在 y = 层高 */
+export function buildCeilingGeometry(room: Room, wallThickness: number = WALL_T): BufferGeometry {
+  const geometry = extrude(footprintShape(room), wallThickness);
+  const height = roomSize(room).h;
+  remap(geometry, ({ u, v, e }) => [u, height + e, v]);
   geometry.name = `${room.id}_ceiling`;
   return geometry;
 }
@@ -168,8 +174,8 @@ export function buildCeilingGeometry(room: Room, wallThickness: number): BufferG
  *
  * 1. UV：`ExtrudeGeometry` 默认的 UV 生成器不适合墙面贴图，当前只服务可视化。
  *    Phase 4 接材质预设时需要自定义 UVGenerator。
- * 2. 共享墙：相邻两房各出半墙拼成一道完整墙。视觉正确，但导出 UE 时更希望是
- *    **一个**实体墙 —— Phase 5 需做共享墙合并。
- * 3. 外墙只有半个厚度。从室内看不出来；若需要看室外需补齐。
- * 4. 洞口只支持四面立墙；地板 / 天花开洞不在 v0.1 schema 范围内。
+ * 2. 四面墙在角落互相重叠 `WALL_T × WALL_T` 的一小段。视觉上无影响
+ *    （两块实体交叠，不是共面，不会 z-fighting），但导出 UE 时应做布尔合并
+ *    以免碰撞体重复计算 —— Phase 5 处理。
+ * 3. 洞口只支持四面立墙；地板 / 天花开洞不在 v0.2 schema 范围内。
  */

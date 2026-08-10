@@ -1,0 +1,170 @@
+# ENTER THE CUBE —— Atrium（L 规格）
+#
+#   spec: L  →  占格 2×2  →  外廓 60×60m  →  净内空 58.5×58.5m
+#              →  x, z ∈ [-29.25, 29.25]，层高 24m
+#              →  四面墙**各 2 个**传送门（offset ±15，共 8 个）
+#
+# 玩法：中庭。四周三层环廊环绕一个 30×30 的通天空洞，一座 14m 廊桥横跨中庭，
+# 桥中段有楼梯通往 20m 的孤岛平台 —— 最高点，也最无处可躲。
+# 竖向路线是单线串联（地面 → 7m 环廊 → 14m 环廊 → 桥 → 20m 平台），
+# 每一段都是可争夺的隘口。
+
+schemaVersion: '0.2.0'
+
+meta:
+  name: ETC Atrium
+  description: >
+    L 规格中庭。7m 环廊围出 30×30 通天空洞；14m 南北环廊由横跨中庭的廊桥相连；
+    桥中段一条楼梯上到 20m 孤岛平台。
+
+themes:
+  - id: atrium
+    name: Atrium Concrete
+    surfaces:
+      floor: concrete_floor_polished
+      ceiling: concrete_coffer
+      wall: concrete_wall_board
+      structure: steel_grate_dark
+    lightPreset: atrium_skylight
+    ambientColor: '#242a30'
+
+rooms:
+  - id: atrium
+    name: Atrium
+    spec: L
+    theme: atrium
+
+    structures:
+      # ── 7m：四段环廊，围出 x,z ∈ [-15, 15] 的通天空洞 ─────────────
+      - id: g1_n
+        type: platform
+        rect: { x: 0, z: -22, w: 58, d: 14 }
+        elevation: 7
+        thickness: 0.35
+        railing: [south]
+
+      - id: g1_s
+        type: platform
+        rect: { x: 0, z: 22, w: 58, d: 14 }
+        elevation: 7
+        thickness: 0.35
+        railing: [north]
+
+      - id: g1_w
+        type: platform
+        rect: { x: -22, z: 0, w: 14, d: 30 }
+        elevation: 7
+        thickness: 0.35
+        railing: [east]
+
+      - id: g1_e
+        type: platform
+        rect: { x: 22, z: 0, w: 14, d: 30 }
+        elevation: 7
+        thickness: 0.35
+        railing: [west]
+
+      # ── 14m：南北两条窄环廊 ──────────────────────────────────
+      - id: g2_n
+        type: platform
+        rect: { x: 0, z: -25, w: 58, d: 8 }
+        elevation: 14
+        thickness: 0.3
+        railing: [south]
+
+      - id: g2_s
+        type: platform
+        rect: { x: 0, z: 25, w: 58, d: 8 }
+        elevation: 14
+        thickness: 0.3
+        railing: [north]
+
+      # ── 14m：横跨中庭的廊桥，首尾停在两条环廊的内侧边上 ──────────
+      - id: sky_bridge
+        type: catwalk
+        path:
+          - { x: 0, z: -21 }
+          - { x: 0, z: 21 }
+        elevation: 14
+        width: 4
+        thickness: 0.25
+        railing: both
+
+      # ── 20m：孤岛平台，全场最高点 ────────────────────────────
+      - id: crown
+        type: platform
+        rect: { x: 0, z: 0, w: 16, d: 16 }
+        elevation: 20
+        thickness: 0.3
+        railing: [north, south, east, west]
+
+      # ── 地面 → 7m 环廊 ─────────────────────────────────────
+      # rise 7，踢面 0.19 → tread 0.25 → 37 级 → 进深 9.25
+      # 顶端 (-8, -6 - 9.25) = (-8, -15.25)，落在 g1_n 内。
+      # 刻意走在空洞里（|x| ≤ 15）—— 沿墙走会从环廊底面穿出去。
+      - id: stair_g_to_g1
+        type: stair
+        from: { x: -8, z: -6 }
+        facing: north
+        fromElevation: 0
+        to: g1_n
+        width: 1.8
+        stepHeight: 0.19
+        railing: both
+
+      # ── 7m 环廊 → 14m 环廊（同为 rise 7 → 进深 9.25，整段踩在 g1_n 上）──
+      - id: stair_g1_to_g2
+        type: stair
+        from: { x: -12, z: -16 }
+        facing: north
+        fromElevation: 7
+        to: g2_n
+        width: 1.8
+        stepHeight: 0.19
+        railing: both
+
+      # ── 廊桥 → 20m 孤岛（rise 6 → 进深 8.0，整段踩在廊桥上）───────
+      # 桥宽 4m、楼梯宽 1.6m，旁边还能过人。
+      - id: stair_bridge_to_crown
+        type: stair
+        from: { x: 0, z: -10 }
+        facing: south
+        fromElevation: 14
+        to: crown
+        width: 1.6
+        stepHeight: 0.19
+        railing: both
+
+      # ── 地面掩体：避开空洞中央的楼梯（x ∈ [-8.9, -7.1]）──────────
+      - { id: pil_nw, type: pillar, at: { x: -6, z: -6 }, size: 1.6, profile: square, height: 7 }
+      - { id: pil_ne, type: pillar, at: { x: 6, z: -6 }, size: 1.6, profile: square, height: 7 }
+      - { id: pil_sw, type: pillar, at: { x: -6, z: 6 }, size: 1.6, profile: square, height: 7 }
+      - { id: pil_se, type: pillar, at: { x: 6, z: 6 }, size: 1.6, profile: square, height: 7 }
+
+    lights:
+      - {
+          id: sky,
+          type: area,
+          at: { x: 0, y: 23.5, z: 0 },
+          tiltX: -90,
+          intensity: 700,
+          size: { w: 26, h: 26 },
+          color: '#dbe9ff',
+        }
+      - { id: lamp_g1n, type: point, at: { x: 0, y: 6, z: -22 }, intensity: 600, range: 24 }
+      - { id: lamp_g1s, type: point, at: { x: 0, y: 6, z: 22 }, intensity: 600, range: 24 }
+      - { id: lamp_g1w, type: point, at: { x: -22, y: 6, z: 0 }, intensity: 600, range: 24 }
+      - { id: lamp_g1e, type: point, at: { x: 22, y: 6, z: 0 }, intensity: 600, range: 24 }
+      - {
+          id: lamp_bridge,
+          type: point,
+          at: { x: 0, y: 18, z: 0 },
+          intensity: 500,
+          range: 20,
+          color: '#9fd4ff',
+        }
+
+    markers:
+      - { id: preview_start, kind: spawn, at: { x: 0, y: 0, z: 12 } }
+      - { id: crown_perch, kind: cover, at: { x: 0, y: 20, z: 0 }, radius: 6 }
+      - { id: objective_center, kind: objective, at: { x: 0, y: 0, z: 0 } }

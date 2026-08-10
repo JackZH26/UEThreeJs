@@ -1,3 +1,4 @@
+import { roomPortals } from '@tjre/schema';
 import type { Rule } from '../diagnostics.js';
 
 /** 在一组条目里找出重复的 id，回调报告 */
@@ -42,20 +43,10 @@ export const R002_duplicateThemeId: Rule = {
   },
 };
 
-export const R003_duplicateConnectionId: Rule = {
-  id: 'R003',
-  title: '连接 id 重复',
-  check(doc, report) {
-    findDuplicates(doc.connections, (id, index) => {
-      report({
-        severity: 'error',
-        path: `connections[${index}].id`,
-        message: `连接 id "${id}" 重复。`,
-        hint: '给其中一个连接换一个唯一 id。',
-      });
-    });
-  },
-};
+/**
+ * ── 已停用：R003（连接 id 重复）────────────────────────────
+ * v0.2 移除了文档级 `connections`。编号不复用，见 docs/CONVENTIONS.md §4.7。
+ */
 
 export const R004_duplicateInRoomId: Rule = {
   id: 'R004',
@@ -70,8 +61,12 @@ export const R004_duplicateInRoomId: Rule = {
         { key: 'markers', items: room.markers },
       ] as const;
 
-      // 房间内所有条目共享同一命名空间 —— 便于命令层与 AI 用单一 id 定位
+      // 房间内所有条目共享同一命名空间 —— 便于命令层与 AI 用单一 id 定位。
+      // 先塞入派生传送门的 id：它们同样占用这个命名空间，手写条目撞上它们
+      // 会让"按 id 定位"产生二义。
       const seen = new Map<string, string>();
+      for (const portal of roomPortals(room)) seen.set(portal.id, '派生传送门');
+
       for (const { key, items } of collections) {
         items.forEach((item, ii) => {
           const previous = seen.get(item.id);
@@ -94,6 +89,5 @@ export const R004_duplicateInRoomId: Rule = {
 export const identityRules: readonly Rule[] = [
   R001_duplicateRoomId,
   R002_duplicateThemeId,
-  R003_duplicateConnectionId,
   R004_duplicateInRoomId,
 ];

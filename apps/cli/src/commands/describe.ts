@@ -1,13 +1,24 @@
 import { loadDocumentFile } from '@tjre/core/node';
-import { isDoor, parseOpeningRef } from '@tjre/schema';
+import {
+  GRID_UNIT,
+  WALL_T,
+  isPortal,
+  roomFootprint,
+  roomOuterPlan,
+  roomPortals,
+  roomSize,
+} from '@tjre/schema';
 import { ExitCode } from '../exit.js';
 
 /**
  * `describe` —— 输出关卡的**压缩摘要**。
  *
- * 存在意义：大关卡的完整 YAML 可能超出 AI agent 一次能舒服处理的量。
- * 这个命令给出拓扑与规模的概览，让 agent 先建立全局认知，
+ * 存在意义：房间的完整 YAML 可能超出 AI agent 一次能舒服处理的量。
+ * 这个命令给出规模与内容的概览，让 agent 先建立全局认知，
  * 再决定去读哪几个房间的细节。
+ *
+ * 尺寸与传送门是**派生量**（不在文件里），所以这里显式打出来 ——
+ * agent 需要知道它在往一个多大的盒子里塞结构。
  */
 export function runDescribe(file: string, json: boolean): ExitCode {
   const loaded = loadDocumentFile(file);
@@ -19,41 +30,33 @@ export function runDescribe(file: string, json: boolean): ExitCode {
 
   const doc = loaded.doc;
 
-  const neighbours = new Map<string, string[]>();
-  const addNeighbour = (from: string, to: string): void => {
-    const list = neighbours.get(from);
-    if (list === undefined) neighbours.set(from, [to]);
-    else list.push(to);
-  };
-  for (const conn of doc.connections) {
-    const a = parseOpeningRef(conn.from).roomId;
-    const b = parseOpeningRef(conn.to).roomId;
-    addNeighbour(a, conn.oneWay ? `${b} (单向)` : b);
-    if (!conn.oneWay) addNeighbour(b, a);
-  }
-
-  const rooms = doc.rooms.map((room) => ({
-    id: room.id,
-    name: room.name ?? null,
-    size: room.size,
-    theme: room.theme,
-    doors: room.openings.filter((o) => isDoor(o.type)).length,
-    windows: room.openings.filter((o) => !isDoor(o.type)).length,
-    structures: countBy(room.structures.map((s) => s.type)),
-    props: room.props.length,
-    lights: room.lights.length,
-    markers: countBy(room.markers.map((m) => m.kind)),
-    connectsTo: neighbours.get(room.id) ?? [],
-  }));
+  const rooms = doc.rooms.map((room) => {
+    const size = roomSize(room);
+    const fp = roomFootprint(room);
+    return {
+      id: room.id,
+      name: room.name ?? null,
+      spec: room.spec,
+      footprint: `${fp.cx}×${fp.cz}`,
+      outerPlan: roomOuterPlan(room),
+      interior: { w: size.w, d: size.d, h: size.h },
+      theme: room.theme,
+      portals: roomPortals(room).length,
+      windows: room.openings.filter((o) => !isPortal(o.type)).length,
+      structures: countBy(room.structures.map((s) => s.type)),
+      props: room.props.length,
+      lights: room.lights.length,
+      markers: countBy(room.markers.map((m) => m.kind)),
+    };
+  });
 
   const summary = {
     name: doc.meta.name,
     schemaVersion: doc.schemaVersion,
-    entryRoom: doc.meta.entryRoom ?? null,
-    grid: doc.meta.grid,
-    wallThickness: doc.meta.wallThickness,
+    gridUnit: GRID_UNIT,
+    wallThickness: WALL_T,
+    snapGrid: doc.meta.grid,
     roomCount: doc.rooms.length,
-    connectionCount: doc.connections.length,
     themes: doc.themes.map((t) => t.id),
     rooms,
   };
@@ -65,15 +68,20 @@ export function runDescribe(file: string, json: boolean): ExitCode {
 
   console.log(`\n${summary.name}  (schema ${summary.schemaVersion})`);
   console.log(
-    `  房间 ${summary.roomCount} · 连接 ${summary.connectionCount} · 入口 ${summary.entryRoom ?? '(未声明)'} · 网格 ${summary.grid}m · 墙厚 ${summary.wallThickness}m`,
+    `  房间 ${summary.roomCount} · 格位 ${summary.gridUnit}m · 墙厚 ${summary.wallThickness}m · 吸附网格 ${summary.snapGrid}m`,
   );
-  console.log(`  主题：${summary.themes.join(', ')}\n`);
+  console.log(`  主题：${summary.themes.join(', ')}`);
+  console.log('  每个房间是一个独立关卡；尺寸与传送门由 spec 派生，不写在文件里。\n');
 
   for (const room of rooms) {
     const label = room.name === null ? room.id : `${room.id} (${room.name})`;
-    console.log(`  ${label}`);
+    console.log(`  ${label}   [${room.spec}]`);
     console.log(
-      `    ${room.size.w}×${room.size.d}×${room.size.h}m · 主题 ${room.theme} · 门 ${room.doors}${room.windows > 0 ? ` · 窗 ${room.windows}` : ''}`,
+      `    占格 ${room.footprint} · 外廓 ${room.outerPlan.w}×${room.outerPlan.d}m · ` +
+        `净内空 ${room.interior.w}×${room.interior.d}m · 层高 ${room.interior.h}m`,
+    );
+    console.log(
+      `    主题 ${room.theme} · 传送门 ${room.portals}${room.windows > 0 ? ` · 其它开口 ${room.windows}` : ''}`,
     );
     const structureText = Object.entries(room.structures)
       .map(([k, v]) => `${k}×${v}`)
@@ -83,7 +91,6 @@ export function runDescribe(file: string, json: boolean): ExitCode {
       .map(([k, v]) => `${k}×${v}`)
       .join(' ');
     if (markerText !== '') console.log(`    标记：${markerText}`);
-    console.log(`    通向：${room.connectsTo.join(', ') || '(无)'}`);
     console.log('');
   }
 

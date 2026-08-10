@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { parseDocument, validateDocument } from '@tjre/core';
 import type { Diagnostic } from '@tjre/core';
 import type { Room, RoomGraphDocument } from '@tjre/schema';
-import { isPortal } from '@tjre/schema';
+import { roomFootprint, roomOuterPlan, roomPortals, roomSize } from '@tjre/schema';
 import { Viewport } from './Viewport.js';
 import type { ViewportStats } from './Viewport.js';
 import { ErrorBoundary } from './ErrorSurface.js';
 import { LOCALES, LOCALE_LABEL, useI18n } from './i18n.js';
 import type { Translate } from './i18n.js';
-import twoRooms from '../../../examples/two-rooms.roomgraph.yaml?raw';
-import loftWarehouse from '../../../examples/loft-warehouse.roomgraph.yaml?raw';
-import pistonFloor from '../../../examples/etc-piston-floor.roomgraph.yaml?raw';
+import pistonFloor from '../../../examples/etc-s-piston-floor.roomgraph.yaml?raw';
+import catwalkGallery from '../../../examples/etc-m-catwalk-gallery.roomgraph.yaml?raw';
+import atrium from '../../../examples/etc-l-atrium.roomgraph.yaml?raw';
 
 /**
  * 编辑器外壳。
@@ -24,9 +24,9 @@ import pistonFloor from '../../../examples/etc-piston-floor.roomgraph.yaml?raw';
  */
 
 const LEVELS: { id: string; label: string; source: string }[] = [
-  { id: 'piston', label: 'ETC #8 Piston Floor', source: pistonFloor },
-  { id: 'loft', label: 'Loft Warehouse', source: loftWarehouse },
-  { id: 'two', label: 'Two Rooms', source: twoRooms },
+  { id: 'piston', label: 'S · Piston Floor', source: pistonFloor },
+  { id: 'catwalk', label: 'M · Catwalk Gallery', source: catwalkGallery },
+  { id: 'atrium', label: 'L · Atrium', source: atrium },
 ];
 
 interface Analysis {
@@ -35,13 +35,7 @@ interface Analysis {
   stage: string;
 }
 
-/**
- * 只跑 schema + semantic 两层。
- *
- * **不跑 layout 层** —— 布局求解是把多房间摆成一个连通空间，而本项目的模型
- * 是「每个房间独立」。在隔离模式下房间固定在原点，没有需要推导的位置，
- * 跑求解器只会产出与产品无关的诊断噪声（R070 重叠 / R072 无法定位等）。
- */
+/** schema + semantic 两层（这也是全部层次 —— 布局求解已随模型修正删除）。 */
 function analyse(source: string): Analysis {
   const loaded = parseDocument(source);
   if (!loaded.ok) return { doc: null, diagnostics: loaded.errors, stage: 'schema' };
@@ -85,6 +79,7 @@ export function App(): React.ReactElement {
   }, [rooms, roomId]);
 
   const room = rooms.find((r) => r.id === roomId) ?? null;
+  const theme = analysis.doc?.themes.find((t) => t.id === room?.theme);
   const errors = analysis.diagnostics.filter((d) => d.severity === 'error');
   const warnings = analysis.diagnostics.filter((d) => d.severity === 'warning');
 
@@ -116,8 +111,8 @@ export function App(): React.ReactElement {
               </div>
             ) : (
               <Viewport
-                doc={analysis.doc}
-                isolateRoom={room.id}
+                room={room}
+                theme={theme}
                 wireframe={wireframe}
                 showCeiling={showCeiling}
                 showStructures={showStructures}
@@ -282,13 +277,20 @@ function RoomRows({
   t: Translate;
 }): React.ReactElement {
   if (room === null) return <div style={{ color: 'var(--muted)' }}>{t('value.none')}</div>;
-  const portals = room.openings.filter((o) => isPortal(o.type)).length;
+  // 以下几项都是**派生量**（不在文件里），所以必须显式展示 ——
+  // 否则作者无从知道自己在往一个多大的盒子里塞结构。
+  const size = roomSize(room);
+  const fp = roomFootprint(room);
+  const outer = roomOuterPlan(room);
   return (
     <>
-      <Row k={t('row.size')} v={`${room.size.w} × ${room.size.d} × ${room.size.h} m`} />
+      <Row k={t('row.spec')} v={`${room.spec}  ·  ${fp.cx}×${fp.cz} ${t('unit.cells')}`} />
+      <Row k={t('row.outer')} v={`${outer.w} × ${outer.d} m`} />
+      <Row k={t('row.interior')} v={`${size.w} × ${size.d} m`} />
+      <Row k={t('row.height')} v={`${size.h} m`} />
       <Row k={t('row.theme')} v={room.theme} />
-      <Row k={t('row.portals')} v={String(portals)} />
-      <Row k={t('row.openings')} v={String(room.openings.length)} />
+      <Row k={t('row.portals')} v={`${roomPortals(room).length}  ${t('value.derived')}`} />
+      {room.openings.length > 0 && <Row k={t('row.openings')} v={String(room.openings.length)} />}
       <Row k={t('row.structures')} v={String(room.structures.length)} />
       <Row k={t('row.props')} v={String(room.props.length)} />
       <Row k={t('row.lights')} v={String(room.lights.length)} />

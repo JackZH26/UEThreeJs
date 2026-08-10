@@ -2,6 +2,7 @@ import { BoxGeometry, CylinderGeometry } from 'three';
 import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PointXZ, Room, Structure, WallSide } from '@tjre/schema';
+import { roomSize } from '@tjre/schema';
 import { DIRECTION, rampLength, stairMetrics } from '@tjre/core';
 
 // 与校验器 R046 共用同一套推导，避免两边各算一遍而漂移
@@ -356,7 +357,7 @@ export function buildStructureGeometry(
       parts = railingAlong(structure.path, structure.elevation, structure.height);
       break;
     case 'pillar':
-      parts = buildPillar(structure, room.size.h);
+      parts = buildPillar(structure, roomSize(room).h);
       break;
     case 'beam': {
       const beam = bar(

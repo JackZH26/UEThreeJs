@@ -12,9 +12,12 @@ import { z } from 'zod';
  *    up    = +Y
  *
  *  房间（Room）：
- *    - `size` 是 **内部净尺寸**：w 沿 X，d 沿 Z，h 沿 Y
- *    - 房间原点 = **地面矩形的中心**（y = 地面高度）
- *    - 相邻房间之间共享一道厚度为 `meta.wallThickness` 的墙
+ *    - 尺寸不手写，由 `spec` 派生（见 spec.ts）。`roomSize(room)` 给出
+ *      **内部净尺寸**：w 沿 X，d 沿 Z，h 沿 Y
+ *    - 房间原点 = **地面矩形的中心**（y = 0 即地面）
+ *    - 每个房间自带完整厚度（`WALL_T`）的四面墙，向外长出，
+ *      外廓 AABB 恰好等于占格尺寸。房间之间**不共享墙** ——
+ *      每个房间是独立关卡，运行时由传送门连接。
  *
  *  房间局部坐标（structures / props / lights / markers 使用）：
  *    - 原点同房间原点；x → east(+X)，z → south(+Z)，y → up(+Y)
@@ -57,7 +60,7 @@ export type SurfaceSide = z.infer<typeof SurfaceSide>;
 
 export const WALL_SIDES: readonly WallSide[] = ['north', 'south', 'east', 'west'] as const;
 
-/** 与某面墙相对的墙 —— 求解连接时使用 */
+/** 与某面墙相对的墙 */
 export const OPPOSITE_WALL: Readonly<Record<WallSide, WallSide>> = {
   north: 'south',
   south: 'north',

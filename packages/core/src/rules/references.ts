@@ -1,6 +1,5 @@
-import { isClimbTarget, parseOpeningRef } from '@tjre/schema';
+import { isClimbTarget } from '@tjre/schema';
 import type { Rule } from '../diagnostics.js';
-import { buildRoomIndex, findOpening } from '../lookup.js';
 
 export const R010_unknownTheme: Rule = {
   id: 'R010',
@@ -20,50 +19,10 @@ export const R010_unknownTheme: Rule = {
   },
 };
 
-export const R011_connectionUnknownRoom: Rule = {
-  id: 'R011',
-  title: '连接引用了不存在的房间',
-  check(doc, report) {
-    const rooms = buildRoomIndex(doc);
-    doc.connections.forEach((conn, ci) => {
-      for (const side of ['from', 'to'] as const) {
-        const { roomId } = parseOpeningRef(conn[side]);
-        if (!rooms.has(roomId)) {
-          report({
-            severity: 'error',
-            path: `connections[${ci}].${side}`,
-            message: `连接 "${conn.id}" 的 ${side} 引用了不存在的房间 "${roomId}"。`,
-            hint: `已定义的房间：${[...rooms.keys()].join(', ') || '（rooms 为空）'}。`,
-          });
-        }
-      }
-    });
-  },
-};
-
-export const R012_connectionUnknownOpening: Rule = {
-  id: 'R012',
-  title: '连接引用了不存在的开口',
-  check(doc, report) {
-    const rooms = buildRoomIndex(doc);
-    doc.connections.forEach((conn, ci) => {
-      for (const side of ['from', 'to'] as const) {
-        const { roomId, openingId } = parseOpeningRef(conn[side]);
-        const entry = rooms.get(roomId);
-        if (entry === undefined) continue; // 由 R011 负责报告
-        if (findOpening(entry.room, openingId) === undefined) {
-          const available = entry.room.openings.map((o) => o.id);
-          report({
-            severity: 'error',
-            path: `connections[${ci}].${side}`,
-            message: `房间 "${roomId}" 中不存在开口 "${openingId}"。`,
-            hint: `该房间现有开口：${available.join(', ') || '（无）'}。请先在房间的 openings 中添加。`,
-          });
-        }
-      }
-    });
-  },
-};
+/**
+ * ── 已停用：R011 / R012（连接引用完整性）────────────────────
+ * v0.2 移除了文档级 `connections`。编号不复用，见 docs/CONVENTIONS.md §4.7。
+ */
 
 export const R013_climbTargetInvalid: Rule = {
   id: 'R013',
@@ -112,9 +71,4 @@ export const R013_climbTargetInvalid: Rule = {
   },
 };
 
-export const referenceRules: readonly Rule[] = [
-  R010_unknownTheme,
-  R011_connectionUnknownRoom,
-  R012_connectionUnknownOpening,
-  R013_climbTargetInvalid,
-];
+export const referenceRules: readonly Rule[] = [R010_unknownTheme, R013_climbTargetInvalid];

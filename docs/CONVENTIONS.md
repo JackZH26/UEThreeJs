@@ -46,8 +46,8 @@ AI agent 请读 [`../AGENTS.md`](../AGENTS.md)（本文件是人类开发规范�
 
 ```
 packages/schema/   Zod schema + TS 类型 + JSON Schema 生成
-packages/core/     文档 IO、校验器、布局求解器、命令层
-packages/scene/    RoomGraph + Layout → three.js 场景（唯一允许 import three 的库包）
+packages/core/     文档 IO、校验器、几何推导、命令层
+packages/scene/    Room → three.js 场景（唯一允许 import three 的库包）
 apps/cli/          headless CLI（AI agent 与 CI 的主接口）
 apps/editor/       浏览器编辑器（Vite + React）
 scripts/           构建期检查
@@ -66,10 +66,10 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 
 ### 3.1 `@tjre/core` 的双入口
 
-| 入口              | 内容                                    | 可用环境      |
-| ----------------- | --------------------------------------- | ------------- |
-| `@tjre/core`      | 解析、校验、求解、命令层 —— **纯逻辑**  | 浏览器 + Node |
-| `@tjre/core/node` | `loadDocumentFile` / `saveDocumentFile` | **仅** Node   |
+| 入口              | 内容                                       | 可用环境      |
+| ----------------- | ------------------------------------------ | ------------- |
+| `@tjre/core`      | 解析、校验、几何推导、命令层 —— **纯逻辑** | 浏览器 + Node |
+| `@tjre/core/node` | `loadDocumentFile` / `saveDocumentFile`    | **仅** Node   |
 
 **主入口顶层不得 import `node:*`。** 否则 Vite 打包编辑器时会报错或塞进
 一堆 polyfill。文件 IO 一律放在 `src/node.ts`。
@@ -129,7 +129,7 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 - CI 校验：所有 `examples/` 关卡能被当前版本加载
 - 版本不符时 IO 层**先报版本错误**再谈字段，避免一屏无意义的字段错误
 
-### 4.6 三层校验模型
+### 4.6 两层校验模型
 
 逐层放行，**上一层有 error 时不进入下一层** —— 否则下层规则无法假设数据成立，
 会产出一堆由根因派生的噪声诊断。
@@ -137,32 +137,42 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 | 层         | 实现                             | 职责                                      |
 | ---------- | -------------------------------- | ----------------------------------------- |
 | `schema`   | Zod（`parseDocument`）           | 结构、类型、必填、枚举、strict 拒未知字段 |
-| `semantic` | `validateDocument` + `ALL_RULES` | 跨字段/跨对象一致性，**不涉及几何**       |
-| `layout`   | `solveLayout`                    | 布局求解产生的几何冲突                    |
+| `semantic` | `validateDocument` + `ALL_RULES` | 跨字段/跨对象一致性                       |
 
-`validateDocument` 必须保持**几何无关**；一切需要世界坐标的检查都属于 `layout` 层。
-`tjre validate` 会依次跑完三层并合并诊断，JSON 输出里的 `stage` 字段标明实际推进到哪一层。
+`tjre validate` 依次跑完两层并合并诊断，JSON 输出里的 `stage` 字段标明实际推进到哪一层。
+
+> v0.1 有第三层 `layout`（`solveLayout`，需要世界坐标）。求解器已随
+> "一个房间 = 一个独立关卡"的模型修正删除，`layout` 层与 §4.9 的确定性要求一并作废。
+
+#### 优先消灭错误，而不是校验错误
+
+一条规则存在的前提是"这个错误有可能被写出来"。如果能把值变成**派生量**，
+错误就在结构上不可能发生，规则也就不必存在。
+
+实例：v0.1 用 4 条规则守着传送门（门数、对齐、尺寸、悬空）。v0.2 让传送门
+完全由 `spec` 派生后，这 4 条全部消失，只剩一条 R020「不许手写传送门」——
+把 4 个可能出错的地方压成 1 个不可能出错的地方。**加规则前先问能不能派生。**
 
 ### 4.7 校验规则编号
 
 按分段取下一个空号，**不复用已废弃编号**：
 
-| 段     | 主题          | 文件                   |
-| ------ | ------------- | ---------------------- |
-| `R00x` | 身份 / 唯一性 | `rules/identity.ts`    |
-| `R01x` | 引用完整性    | `rules/references.ts`  |
-| `R02x` | 开口          | `rules/openings.ts`    |
-| `R03x` | 连接 / 拓扑   | `rules/connections.ts` |
-| `R04x` | 内部结构件    | `rules/structures.ts`  |
-| `R05x` | 网格对齐      | `rules/grid.ts`        |
-| `R06x` | gameplay      | `rules/gameplay.ts`    |
-| `R07x` | 布局求解      | `solver/solve.ts`      |
+| 段     | 主题          | 文件                  |
+| ------ | ------------- | --------------------- |
+| `R00x` | 身份 / 唯一性 | `rules/identity.ts`   |
+| `R01x` | 引用完整性    | `rules/references.ts` |
+| `R02x` | 开口          | `rules/openings.ts`   |
+| `R03x` | 连接 / 拓扑   | （v0.2 整段停用）     |
+| `R04x` | 内部结构件    | `rules/structures.ts` |
+| `R05x` | 网格对齐      | `rules/grid.ts`       |
+| `R06x` | gameplay      | `rules/gameplay.ts`   |
+| `R07x` | 布局求解      | （v0.2 整段停用）     |
 
 `error` 阻断导出；`warning` 不阻断但 CI 用 `--strict` 视为失败。
 
-⚠️ **`R07x` 由求解器直接产生，不在 `ALL_RULES` 注册表里** ——
-它们需要世界坐标，而注册表里的规则按 §4.6 必须几何无关。
-因此 `rules.test.ts` 的注册表自检不覆盖 R07x，其正确性由 `solver.test.ts` 保证。
+⚠️ **编号一旦用过就不再复用，哪怕规则已停用。** 复用会让旧的 diff、issue 和
+AI 会话记录指向一条含义完全不同的规则。v0.2 停用清单见 `rules/index.ts` 顶部注释：
+R003 / R011 / R012 / R024 / R025 / R030–R033 / R045 / R060 / R061 / R070–R073。
 
 ### 4.8 几何推导只能有一份实现
 
@@ -175,15 +185,21 @@ three.js。若两边各写一份，会出现「**校验通过但几何错位**�
 
 新增此类推导时一律放 core，scene 只做"把数值变成 BufferGeometry"。
 
-### 4.9 求解器的确定性要求
+### 4.9 派生量只能有一份定义
 
-`solveLayout` 必须满足「同输入 → 逐字节同输出」，有测试守着。两个具体约束：
+`packages/schema/src/spec.ts` 是**唯一**的规格派生表：格位、墙厚、层高、
+净内空、传送门位置全在里面。任何地方都不许再算一遍。
 
-1. **禁止用 `Math.cos` / `Math.sin` 做 90° 旋转** ——
-   `Math.cos(Math.PI/2)` 返回 `6.123e-17` 而非 `0`，会给坐标带上浮点噪声，
-   破坏 golden 测试与序列化确定性。用 `solver/rotation.ts` 里的整数查表。
-2. **BFS 的队列与邻接表必须排序**（按 room id / connection id），
-   否则遍历顺序受 `Map` 插入顺序影响，环路冲突的报告位置会漂移。
+- 拿房间尺寸用 `roomSize(room)`，不要自己 `GRID_UNIT * cx - 2 * WALL_T`
+- 拿开口列表用 `roomOpenings(room)`（含派生传送门），不要只读 `room.openings`
+- 几何、校验、CLI、编辑器全部走这些访问器
+
+两条不变量必须永远成立，`shell.test.ts` 与 `buildRoom.test.ts` 各有一组断言守着：
+
+1. **外壳水平 AABB 恒等于占格尺寸**（`GRID_UNIT` 的整数倍）
+2. **传送门 offset 与墙厚无关**（锚定占格边中心，所以拼装必然对齐）
+
+改这张表等于改所有 36 个房间的外形，属破坏性变更，要按 §4.5 走版本迁移。
 
 ## 5. 测试规范
 
@@ -192,15 +208,16 @@ three.js。若两边各写一份，会出现「**校验通过但几何错位**�
 | 单元         | schema 校验、每条规则正反用例                          | Vitest     |
 | 往返         | 序列化确定性、解析往返稳定                             | Vitest     |
 | 夹具回归     | 所有 `examples/` 零 error 且 `--strict` 零 warning     | Vitest     |
-| Golden       | solver：输入图 → **显式写死**的期望坐标                | Vitest     |
+| Golden       | 规格派生表 → **显式写死**的尺寸与传送门偏移            | Vitest     |
 | **属性测试** | 随机命令序列 → 全部 undo → **文档回到初态**（Phase 2） | fast-check |
 | 视觉回归     | example 固定机位截图比对（Phase 3）                    | Playwright |
 
 新增规则**必须**同时加"能抓到"和"不误报"两个用例。
-（实例：`R044` 初版对高窗误报，是 `loft-warehouse` 夹具抓出来的。）
+（实例：`R044` 初版对高窗误报，是夹具关卡抓出来的。）
 
-**solver 的 golden 测试刻意不用 snapshot**：坐标是手算可核对的，
-写成显式期望值等于把几何约定文档化；snapshot 会在改坏时被无声地更新掉。
+**规格派生表的测试刻意不用 snapshot**（`packages/schema/test/spec.test.ts`）：
+那张表里的数字来自游戏的真实规格，写成显式期望值等于把约定文档化；
+snapshot 会在改坏时被无声地更新掉。
 
 ### 5.1 几何测试可以 headless 跑
 
@@ -225,7 +242,7 @@ Node 通过不代表打包通过，两套解析逻辑不同。CI 会先构建编
 ## 6. Git 规范
 
 - `main` 保护 + feature 分支 + PR
-- Conventional Commits：`feat(core):` / `fix(solver):` / `docs:` / `chore:`
+- Conventional Commits：`feat(core):` / `fix(scene):` / `docs:` / `chore:`
 - PR 必过：`pnpm check` + `pnpm verify:three`
 - 每个 PR 能用一句话说清"用户现在能做什么了"
 

@@ -6,7 +6,7 @@ import type { RoomGraphDocumentInput } from '@tjre/schema';
  * 直接拿 RoomGraphDocumentInput 写测试会到处需要 `!`。
  *
  * 这里定义一个「稠密」输入类型：fixture 保证这些数组一定存在（哪怕是空数组），
- * 于是测试里可以直接 `d.rooms[0]!.openings.push(...)`。
+ * 于是测试里可以直接 `d.rooms[0].openings.push(...)`。
  */
 type RoomInput = NonNullable<RoomGraphDocumentInput['rooms']>[number];
 
@@ -21,12 +21,11 @@ type DenseRoomInput = Omit<
   markers: NonNullable<RoomInput['markers']>;
 };
 
-export type FixtureInput = Omit<RoomGraphDocumentInput, 'rooms' | 'connections'> & {
+export type FixtureInput = Omit<RoomGraphDocumentInput, 'rooms'> & {
   rooms: DenseRoomInput[];
-  connections: NonNullable<RoomGraphDocumentInput['connections']>;
 };
 
-function denseRoom(room: RoomInput): DenseRoomInput {
+export function denseRoom(room: RoomInput): DenseRoomInput {
   return {
     ...room,
     openings: room.openings ?? [],
@@ -38,13 +37,15 @@ function denseRoom(room: RoomInput): DenseRoomInput {
 }
 
 /**
- * 构造一份「两房一门」的最小合法文档。
- * 测试通过 `mutate` 回调破坏它，验证对应规则能抓到。
+ * 构造一份最小合法文档：一个 S 房间。
+ *
+ * 注意这里**没有** size / doorCount / openings —— 尺寸与传送门都由 `spec`
+ * 派生。测试通过 `mutate` 回调破坏它，验证对应规则能抓到。
  */
 export function minimalDocInput(): FixtureInput {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { name: 'Fixture', entryRoom: 'a' },
+    meta: { name: 'Fixture' },
     themes: [
       {
         id: 'plain',
@@ -55,25 +56,11 @@ export function minimalDocInput(): FixtureInput {
     rooms: [
       denseRoom({
         id: 'a',
-        size: { w: 8, d: 8, h: 4 },
+        spec: 'S',
         theme: 'plain',
-        doorCount: 1,
-        openings: [
-          { id: 'door_n', wall: 'north', type: 'door', offset: 0, size: { w: 1.5, h: 2.5 } },
-        ],
         markers: [{ id: 'spawn_p', kind: 'spawn', at: { x: 0, y: 0, z: 0 } }],
       }),
-      denseRoom({
-        id: 'b',
-        size: { w: 8, d: 8, h: 4 },
-        theme: 'plain',
-        doorCount: 1,
-        openings: [
-          { id: 'door_s', wall: 'south', type: 'door', offset: 0, size: { w: 1.5, h: 2.5 } },
-        ],
-      }),
     ],
-    connections: [{ id: 'a_to_b', from: 'a.door_n', to: 'b.door_s' }],
   };
 }
 

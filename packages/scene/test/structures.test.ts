@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Box3 } from 'three';
 import type { BufferGeometry } from 'three';
-import { RoomGraphDocument, SCHEMA_VERSION } from '@tjre/schema';
-import type { Room, RoomGraphDocumentInput, Structure } from '@tjre/schema';
+import { Room, roomSize } from '@tjre/schema';
+import type { Room as RoomType, RoomGraphDocumentInput, Structure } from '@tjre/schema';
 import { buildStructureGeometry, rampLength, stairMetrics } from '@tjre/scene';
 
 const P = 4; // Float32 顶点精度，见 shell.test.ts
@@ -11,18 +11,15 @@ type StructureInput = NonNullable<
   NonNullable<RoomGraphDocumentInput['rooms']>[number]['structures']
 >;
 
-/** 造一个 20×16×10 的高房间（目标形态：仓库 / loft），塞进给定结构件 */
-function makeRoom(structures: StructureInput): Room {
-  const doc = RoomGraphDocument.parse({
-    schemaVersion: SCHEMA_VERSION,
-    meta: { name: 'T' },
-    themes: [{ id: 'p', surfaces: { floor: 'f', ceiling: 'c', wall: 'w' } }],
-    rooms: [{ id: 'r', size: { w: 20, d: 16, h: 10 }, theme: 'p', doorCount: 0, structures }],
-    connections: [],
-  } satisfies RoomGraphDocumentInput);
-  const room = doc.rooms[0];
-  if (room === undefined) throw new Error('fixture 构造失败');
-  return room;
+/**
+ * 用 S 规格房间（净内空 28.5 × 28.5，层高 12）承载测试结构件。
+ * 结构件坐标都在 ±10 以内，任何规格都装得下 —— 这些测试只关心结构件
+ * 自身的几何，唯一与房间相关的量是"pillar 不给 height 时顶到天花"。
+ */
+const ROOM_HEIGHT = roomSize(Room.parse({ id: 'r', spec: 'S', theme: 'p' })).h;
+
+function makeRoom(structures: StructureInput): RoomType {
+  return Room.parse({ id: 'r', spec: 'S', theme: 'p', structures });
 }
 
 function buildOne(structures: StructureInput, id: string) {
@@ -211,7 +208,7 @@ describe('其它结构件', () => {
     if (built === null) throw new Error('无几何');
     const b = bbox(built.geometry);
     expect(b.min.y).toBeCloseTo(0, P);
-    expect(b.max.y).toBeCloseTo(10, P); // room.size.h
+    expect(b.max.y).toBeCloseTo(ROOM_HEIGHT, P); // 层高由 spec 派生（S = 12）
     expect(built.walkable).toBe(false);
   });
 

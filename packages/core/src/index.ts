@@ -11,5 +11,4 @@ export * from './geometry.js';
 export * from './validate.js';
 export * from './io.js';
 export * from './command.js';
-export * from './solver/index.js';
 export { ALL_RULES } from './rules/index.js';

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { RoomGraphDocument } from './document.js';
 import { Structure } from './structure.js';
 import { Opening } from './opening.js';
-import { Room, Connection } from './room.js';
+import { Room } from './room.js';
 
 /**
  * 生成 JSON Schema —— 这是喂给外部 AI agent（Cindy / Codex / Claude Code）的**机器契约**。
@@ -24,6 +24,5 @@ export function toJsonSchemaFragments(): Record<string, Record<string, unknown>>
     room: z.toJSONSchema(Room, opts) as Record<string, unknown>,
     opening: z.toJSONSchema(Opening, opts) as Record<string, unknown>,
     structure: z.toJSONSchema(Structure, opts) as Record<string, unknown>,
-    connection: z.toJSONSchema(Connection, opts) as Record<string, unknown>,
   };
 }

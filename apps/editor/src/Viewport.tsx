@@ -12,9 +12,10 @@ import {
 } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-import type { RoomGraphDocument } from '@tjre/schema';
-import { buildScene } from '@tjre/scene';
-import type { BuildSceneResult } from '@tjre/scene';
+import { GRID_UNIT } from '@tjre/schema';
+import type { Room, Theme } from '@tjre/schema';
+import { buildRoom } from '@tjre/scene';
+import type { BuildRoomResult } from '@tjre/scene';
 import { FirstPersonController } from './FirstPersonController.js';
 
 /**
@@ -28,15 +29,18 @@ import { FirstPersonController } from './FirstPersonController.js';
  * （`pnpm verify:three` 断言了这一点）。
  */
 
-export type ViewportStats = BuildSceneResult['stats'];
+export type ViewportStats = BuildRoomResult['stats'];
 
 export interface ViewportProps {
-  doc: RoomGraphDocument | null;
+  /**
+   * 要渲染的房间。**一次只渲染一个** —— 每个房间就是一个独立关卡，
+   * 房间之间由传送门在运行时连接，没有"把整份文档摆成一个连通空间"这回事。
+   */
+  room: Room | null;
+  theme: Theme | undefined;
   wireframe: boolean;
   showCeiling: boolean;
   showStructures: boolean;
-  /** 单房间隔离：只渲染这一个房间并固定在原点（见 buildScene 的说明） */
-  isolateRoom?: string;
   /** 第一人称漫游模式 —— 用于验证尺度感与能否走上夹层 */
   firstPerson: boolean;
   onStats?: (stats: ViewportStats) => void;
@@ -54,31 +58,23 @@ export interface ViewportProps {
 }
 
 /**
- * 找出生点的世界坐标。
+ * 找出生点。
  *
- * `spawn` marker 存的是**房间局部**坐标，所以要经房间 Group 的世界矩阵变换。
- * 没有 spawn marker 时退回到关卡中心上方，保证漫游模式总能启动。
+ * 房间固定在原点、不旋转，所以房间局部坐标就是世界坐标 —— 不需要矩阵变换。
+ * 没有 spawn marker 时退回到房间中心，保证漫游模式总能启动。
  */
-function resolveSpawn(doc: RoomGraphDocument, built: BuildSceneResult): Vector3 {
-  built.root.updateMatrixWorld(true);
-  // 隔离模式下 roomGroups 里只有当前房间，遍历自然只会命中它
-  for (const room of doc.rooms) {
-    if (!built.roomGroups.has(room.id)) continue;
-    const marker = room.markers.find((m) => m.kind === 'spawn');
-    const group = built.roomGroups.get(room.id);
-    if (marker === undefined || group === undefined) continue;
-    return group.localToWorld(new Vector3(marker.at.x, marker.at.y, marker.at.z));
-  }
-  const b = built.layout.bounds;
-  return new Vector3((b.minX + b.maxX) / 2, 0.5, (b.minZ + b.maxZ) / 2);
+function resolveSpawn(room: Room): Vector3 {
+  const marker = room.markers.find((m) => m.kind === 'spawn');
+  if (marker !== undefined) return new Vector3(marker.at.x, marker.at.y, marker.at.z);
+  return new Vector3(0, 0.5, 0);
 }
 
 export function Viewport({
-  doc,
+  room,
+  theme,
   wireframe,
   showCeiling,
   showStructures,
-  isolateRoom,
   firstPerson,
   onStats,
   onError,
@@ -92,7 +88,7 @@ export function Viewport({
 
   useEffect(() => {
     const host = hostRef.current;
-    if (host === null || doc === null) return;
+    if (host === null || room === null) return;
 
     /**
      * StrictMode 在开发模式会 挂载 → 卸载 → 再挂载。
@@ -114,25 +110,23 @@ export function Viewport({
     scene.add(sun);
 
     // 第一人称时必须有天花，否则天光直接漏进来、也看不出是室内
-    const built = buildScene(doc, {
+    const built = buildRoom(room, theme, {
       wireframe,
       showCeiling: showCeiling || firstPerson,
       showStructures,
-      ...(isolateRoom === undefined ? {} : { isolateRoom }),
     });
     scene.add(built.root);
     callbacks.current.onStats?.(built.stats);
 
-    const b = built.layout.bounds;
-
-    // 网格只在俯视模式下有意义
+    // 网格只在俯视模式下有意义。用**外廓**尺寸并按格位（GRID_UNIT）划分 ——
+    // 一格 = 一个占格，能直接看出这个房间占几格。
     const grid = firstPerson
       ? null
       : (() => {
-          const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 20);
-          const size = Math.ceil(span / 10) * 10 + 20;
-          const helper = new GridHelper(size, size / 2, 0x30363d, 0x21262d);
-          helper.position.set((b.minX + b.maxX) / 2, -0.01, (b.minZ + b.maxZ) / 2);
+          const span = Math.max(built.outerPlan.w, built.outerPlan.d);
+          const size = span + GRID_UNIT * 2;
+          const helper = new GridHelper(size, size / GRID_UNIT, 0x30363d, 0x21262d);
+          helper.position.set(0, -0.01, 0);
           scene.add(helper);
           return helper;
         })();
@@ -144,7 +138,7 @@ export function Viewport({
     let onCanvasClick: (() => void) | null = null;
 
     if (firstPerson) {
-      const spawn = resolveSpawn(doc, built);
+      const spawn = resolveSpawn(room);
       lock = new PointerLockControls(camera, renderer.domElement);
       fps = new FirstPersonController({
         camera,
@@ -241,7 +235,7 @@ export function Viewport({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [doc, wireframe, showCeiling, showStructures, firstPerson, isolateRoom]);
+  }, [room, theme, wireframe, showCeiling, showStructures, firstPerson]);
 
   return <div ref={hostRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }} />;
 }
