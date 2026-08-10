@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react';
 import {
   AmbientLight,
   Box3,
-  Clock,
   DirectionalLight,
   GridHelper,
   PerspectiveCamera,
   Scene,
+  Timer,
   Vector3,
   WebGPURenderer,
 } from 'three/webgpu';
@@ -179,7 +179,12 @@ export function Viewport({
     const observer = new ResizeObserver(resize);
     observer.observe(host);
 
-    const clock = new Clock();
+    // 用 Timer 而不是 Clock：Clock 在 r183 起已 deprecated，会每帧往控制台打
+    // 警告 —— 而控制台是我们诊断黑屏的主要通道，不能让它被噪声淹没。
+    // 另外 connect(document) 会启用 Page Visibility API：切到别的标签页时
+    // delta 归零，回来时不会因为累积了几十秒而把人瞬移穿墙。
+    const timer = new Timer();
+    timer.connect(document);
     let frames = 0;
     let lastReport = 0;
 
@@ -195,15 +200,18 @@ export function Viewport({
         );
 
         renderer.setAnimationLoop(() => {
-          // dt 夹上限：切标签页回来时 delta 会很大，会把人瞬移穿墙
-          const dt = Math.min(clock.getDelta(), 0.1);
+          // Timer 必须显式推进（Clock 是查询时隐式推进的）
+          timer.update();
+          // 仍然夹一次上限：Page Visibility 只挡标签页切换，
+          // 长 GC 停顿或场景重建造成的掉帧一样会给出很大的 delta
+          const dt = Math.min(timer.getDelta(), 0.1);
           orbit?.update();
           fps?.update(dt);
           renderer.render(scene, camera);
 
           frames++;
           // 每帧 setState 会把 React 拖死，约 2Hz 上报一次就够诊断
-          const elapsed = clock.getElapsedTime();
+          const elapsed = timer.getElapsed();
           if (elapsed - lastReport > 0.5) {
             lastReport = elapsed;
             callbacks.current.onFrames?.(frames);
@@ -217,6 +225,7 @@ export function Viewport({
 
     return () => {
       cancelled = true;
+      timer.dispose(); // 摘掉 visibilitychange 监听
       observer.disconnect();
       if (onCanvasClick !== null) renderer.domElement.removeEventListener('click', onCanvasClick);
       fps?.disconnect();
