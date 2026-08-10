@@ -35,6 +35,8 @@ export interface ViewportProps {
   wireframe: boolean;
   showCeiling: boolean;
   showStructures: boolean;
+  /** 单房间隔离：只渲染这一个房间并固定在原点（见 buildScene 的说明） */
+  isolateRoom?: string;
   /** 第一人称漫游模式 —— 用于验证尺度感与能否走上夹层 */
   firstPerson: boolean;
   onStats?: (stats: ViewportStats) => void;
@@ -59,7 +61,9 @@ export interface ViewportProps {
  */
 function resolveSpawn(doc: RoomGraphDocument, built: BuildSceneResult): Vector3 {
   built.root.updateMatrixWorld(true);
+  // 隔离模式下 roomGroups 里只有当前房间，遍历自然只会命中它
   for (const room of doc.rooms) {
+    if (!built.roomGroups.has(room.id)) continue;
     const marker = room.markers.find((m) => m.kind === 'spawn');
     const group = built.roomGroups.get(room.id);
     if (marker === undefined || group === undefined) continue;
@@ -74,6 +78,7 @@ export function Viewport({
   wireframe,
   showCeiling,
   showStructures,
+  isolateRoom,
   firstPerson,
   onStats,
   onError,
@@ -113,6 +118,7 @@ export function Viewport({
       wireframe,
       showCeiling: showCeiling || firstPerson,
       showStructures,
+      ...(isolateRoom === undefined ? {} : { isolateRoom }),
     });
     scene.add(built.root);
     callbacks.current.onStats?.(built.stats);
@@ -235,7 +241,7 @@ export function Viewport({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [doc, wireframe, showCeiling, showStructures, firstPerson]);
+  }, [doc, wireframe, showCeiling, showStructures, firstPerson, isolateRoom]);
 
   return <div ref={hostRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }} />;
 }

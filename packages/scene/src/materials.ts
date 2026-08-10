@@ -1,5 +1,6 @@
 import { Color, DoubleSide, MeshStandardMaterial } from 'three';
 import type { Material } from 'three';
+import { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL } from './portal.js';
 
 /**
  * 占位材质提供器。
@@ -56,6 +57,13 @@ export class MaterialLibrary {
     const cached = this.cache.get(materialId);
     if (cached !== undefined) return cached;
 
+    // 传送门是固定样式，不走哈希占位色 —— 它必须在灰调场景里一眼可辨
+    if (materialId === PORTAL_SURFACE_MATERIAL || materialId === PORTAL_FRAME_MATERIAL) {
+      const portal = this.createPortalMaterial(materialId);
+      this.cache.set(materialId, portal);
+      return portal;
+    }
+
     const material = new MeshStandardMaterial({
       color: colorFor(materialId),
       roughness: 0.85,
@@ -67,6 +75,41 @@ export class MaterialLibrary {
     });
     material.name = materialId;
     this.cache.set(materialId, material);
+    return material;
+  }
+
+  /**
+   * 传送门材质（固定样式，见 portal.ts）。
+   *
+   * 门面用强自发光的青色，门框用暗金属 —— 组合在混凝土灰调里辨识度最高，
+   * 且自发光不受场景光照影响，任何角度都亮。
+   */
+  private createPortalMaterial(materialId: string): MeshStandardMaterial {
+    const isSurface = materialId === PORTAL_SURFACE_MATERIAL;
+    const material = new MeshStandardMaterial(
+      isSurface
+        ? {
+            color: new Color(0x0a2a33),
+            emissive: new Color(0x38e8ff),
+            emissiveIntensity: 1.4,
+            roughness: 0.25,
+            metalness: 0,
+            transparent: true,
+            opacity: 0.82,
+            side: DoubleSide,
+            wireframe: this.options.wireframe ?? false,
+          }
+        : {
+            color: new Color(0x2a3138),
+            emissive: new Color(0x1a6b7a),
+            emissiveIntensity: 0.5,
+            roughness: 0.35,
+            metalness: 0.8,
+            side: DoubleSide,
+            wireframe: this.options.wireframe ?? false,
+          },
+    );
+    material.name = materialId;
     return material;
   }
 

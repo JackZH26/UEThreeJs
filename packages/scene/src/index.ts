@@ -29,3 +29,6 @@ export type { BuildSceneOptions, BuildSceneResult } from './buildScene.js';
 
 export { buildStructureGeometry, rampLength, stairMetrics } from './structures.js';
 export type { StructureGeometryResult } from './structures.js';
+
+export { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL, buildPortalGeometry } from './portal.js';
+export type { PortalGeometryResult } from './portal.js';

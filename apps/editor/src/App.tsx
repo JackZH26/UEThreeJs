@@ -1,65 +1,64 @@
-import { useMemo, useState } from 'react';
-import { parseDocument, solveLayout, validateDocument } from '@tjre/core';
+import { useEffect, useMemo, useState } from 'react';
+import { parseDocument, validateDocument } from '@tjre/core';
 import type { Diagnostic } from '@tjre/core';
-import type { RoomGraphDocument } from '@tjre/schema';
+import type { Room, RoomGraphDocument } from '@tjre/schema';
+import { isPortal } from '@tjre/schema';
 import { Viewport } from './Viewport.js';
 import type { ViewportStats } from './Viewport.js';
 import { ErrorBoundary } from './ErrorSurface.js';
+import { LOCALES, LOCALE_LABEL, useI18n } from './i18n.js';
+import type { Translate } from './i18n.js';
 import twoRooms from '../../../examples/two-rooms.roomgraph.yaml?raw';
 import loftWarehouse from '../../../examples/loft-warehouse.roomgraph.yaml?raw';
+import pistonFloor from '../../../examples/etc-piston-floor.roomgraph.yaml?raw';
 
 /**
- * Phase 1 的编辑器外壳：选关卡 → 三层校验 → 求解 → 渲染。
+ * 编辑器外壳。
  *
  * 布局：**左侧 3D 显示区，右侧操作面板**。
  *
- * 关卡内容目前从 `examples/` 以 `?raw` 静态引入。Phase 2 会换成
- * file watcher + write-through，让外部 AI agent 改文件后浏览器自动热重载。
+ * 核心模型（ENTER THE CUBE）：**一个房间 = 一个独立关卡**。
+ * 36 个房间是可互换单元，每局按 seed 随机拼装，房间之间靠**传送门**在运行时
+ * 连接。所以编辑器一次只显示一个房间 —— 把整份文档当成一个连通空间来渲染
+ * 是错的模型。文档里若有多个房间，视为一个**房间库**，用房间选择器切换。
  */
 
 const LEVELS: { id: string; label: string; source: string }[] = [
-  { id: 'loft', label: 'Loft Warehouse（目标形态）', source: loftWarehouse },
-  { id: 'two', label: 'Two Rooms（最小）', source: twoRooms },
+  { id: 'piston', label: 'ETC #8 Piston Floor', source: pistonFloor },
+  { id: 'loft', label: 'Loft Warehouse', source: loftWarehouse },
+  { id: 'two', label: 'Two Rooms', source: twoRooms },
 ];
 
 interface Analysis {
   doc: RoomGraphDocument | null;
   diagnostics: Diagnostic[];
   stage: string;
-  roomCount: number;
-  bounds: string;
 }
 
+/**
+ * 只跑 schema + semantic 两层。
+ *
+ * **不跑 layout 层** —— 布局求解是把多房间摆成一个连通空间，而本项目的模型
+ * 是「每个房间独立」。在隔离模式下房间固定在原点，没有需要推导的位置，
+ * 跑求解器只会产出与产品无关的诊断噪声（R070 重叠 / R072 无法定位等）。
+ */
 function analyse(source: string): Analysis {
   const loaded = parseDocument(source);
-  if (!loaded.ok) {
-    return { doc: null, diagnostics: loaded.errors, stage: 'schema', roomCount: 0, bounds: '—' };
-  }
+  if (!loaded.ok) return { doc: null, diagnostics: loaded.errors, stage: 'schema' };
 
   const semantic = validateDocument(loaded.doc);
-  if (!semantic.ok) {
-    return {
-      doc: null,
-      diagnostics: semantic.all,
-      stage: 'semantic',
-      roomCount: loaded.doc.rooms.length,
-      bounds: '—',
-    };
-  }
-
-  const layout = solveLayout(loaded.doc);
-  const b = layout.bounds;
   return {
-    doc: loaded.doc,
-    diagnostics: [...semantic.all, ...layout.diagnostics],
-    stage: layout.ok ? 'complete' : 'layout',
-    roomCount: loaded.doc.rooms.length,
-    bounds: `${(b.maxX - b.minX).toFixed(1)} × ${(b.maxZ - b.minZ).toFixed(1)} m`,
+    doc: semantic.ok ? loaded.doc : null,
+    diagnostics: semantic.all,
+    stage: semantic.ok ? 'complete' : 'semantic',
   };
 }
 
 export function App(): React.ReactElement {
+  const { locale, setLocale, t } = useI18n();
+
   const [levelId, setLevelId] = useState(LEVELS[0]?.id ?? '');
+  const [roomId, setRoomId] = useState<string | null>(null);
   const [wireframe, setWireframe] = useState(false);
   // 天花默认关：编辑器常态是从外部俯视，开着就什么内部都看不到
   const [showCeiling, setShowCeiling] = useState(false);
@@ -68,12 +67,24 @@ export function App(): React.ReactElement {
   const [stats, setStats] = useState<ViewportStats | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<Error | null>(null);
-  // 帧计数心跳：0 = 渲染循环从未跑起来；持续增长 = 循环正常，问题在相机或几何
   const [frames, setFrames] = useState(0);
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const analysis = useMemo(() => analyse(level?.source ?? ''), [level]);
+  const rooms = analysis.doc?.rooms ?? [];
 
+  // 换关卡后原来的房间 id 可能不存在了，回落到第一个
+  useEffect(() => {
+    if (rooms.length === 0) {
+      setRoomId(null);
+      return;
+    }
+    if (roomId === null || !rooms.some((r) => r.id === roomId)) {
+      setRoomId(rooms[0]?.id ?? null);
+    }
+  }, [rooms, roomId]);
+
+  const room = rooms.find((r) => r.id === roomId) ?? null;
   const errors = analysis.diagnostics.filter((d) => d.severity === 'error');
   const warnings = analysis.diagnostics.filter((d) => d.severity === 'warning');
 
@@ -81,14 +92,14 @@ export function App(): React.ReactElement {
     <div style={{ display: 'flex', height: '100%' }}>
       {/* ── 左：3D 显示区 ─────────────────────────────── */}
       <main style={{ position: 'relative', flex: 1, minWidth: 0 }}>
-        {analysis.doc === null ? (
+        {analysis.doc === null || room === null ? (
           <div style={{ padding: 24, color: 'var(--error)' }}>
-            关卡在 {analysis.stage} 阶段校验失败，无法渲染。见右侧诊断。
+            {t('error.validationFailed', { stage: analysis.stage })}
           </div>
         ) : (
-          <ErrorBoundary label="3D 视口">
+          <ErrorBoundary label="3D">
             {/* 出错时**不要**同时渲染 Viewport：它的 host div 是 position:absolute
-                inset:0，会把错误信息整块盖住，等于错误白写了一遍。 */}
+                inset:0，会把错误信息整块盖住。 */}
             {rendererError !== null ? (
               <div
                 style={{
@@ -101,11 +112,12 @@ export function App(): React.ReactElement {
                   font: '12px/1.6 ui-monospace, Consolas, monospace',
                 }}
               >
-                {`✗ 渲染器初始化失败\n\n${rendererError.name}: ${rendererError.message}\n\n${rendererError.stack ?? ''}`}
+                {`${t('error.rendererInit')}\n\n${rendererError.name}: ${rendererError.message}\n\n${rendererError.stack ?? ''}`}
               </div>
             ) : (
               <Viewport
                 doc={analysis.doc}
+                isolateRoom={room.id}
                 wireframe={wireframe}
                 showCeiling={showCeiling}
                 showStructures={showStructures}
@@ -123,7 +135,7 @@ export function App(): React.ReactElement {
       {/* ── 右：操作面板 ──────────────────────────────── */}
       <aside
         style={{
-          width: 320,
+          width: 330,
           flexShrink: 0,
           background: 'var(--panel)',
           borderLeft: '1px solid var(--border)',
@@ -131,9 +143,38 @@ export function App(): React.ReactElement {
           overflowY: 'auto',
         }}
       >
-        <h1 style={{ fontSize: 15, margin: '0 0 12px' }}>ThreeJsRoomEditor</h1>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'baseline',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+          }}
+        >
+          <h1 style={{ fontSize: 15, margin: 0 }}>{t('app.title')}</h1>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {LOCALES.map((code) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setLocale(code)}
+                style={{
+                  background: code === locale ? 'var(--accent)' : 'transparent',
+                  color: code === locale ? '#0d1117' : 'var(--muted)',
+                  border: '1px solid var(--border)',
+                  borderRadius: 4,
+                  padding: '2px 7px',
+                  fontSize: 11,
+                  cursor: 'pointer',
+                }}
+              >
+                {LOCALE_LABEL[code]}
+              </button>
+            ))}
+          </div>
+        </div>
 
-        <Field label="关卡">
+        <Field label={t('field.level')}>
           <select value={levelId} onChange={(e) => setLevelId(e.target.value)} style={selectStyle}>
             {LEVELS.map((l) => (
               <option key={l.id} value={l.id}>
@@ -143,40 +184,43 @@ export function App(): React.ReactElement {
           </select>
         </Field>
 
-        <Section title="显示">
+        <Field label={t('field.room')}>
+          <select
+            value={roomId ?? ''}
+            onChange={(e) => setRoomId(e.target.value)}
+            style={selectStyle}
+            disabled={rooms.length <= 1}
+          >
+            {rooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name ?? r.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+
+        <Section title={t('section.display')}>
           <Toggle checked={showStructures} onChange={setShowStructures}>
-            内部结构件（夹层 / 楼梯 / 廊桥）
+            {t('toggle.structures')}
           </Toggle>
           <Toggle checked={showCeiling} onChange={setShowCeiling}>
-            天花（挡住内部，默认关）
+            {t('toggle.ceiling')}
           </Toggle>
           <Toggle checked={wireframe} onChange={setWireframe}>
-            线框模式（核对几何拓扑）
+            {t('toggle.wireframe')}
           </Toggle>
           <Toggle checked={firstPerson} onChange={setFirstPerson}>
-            第一人称漫游
+            {t('toggle.firstPerson')}
           </Toggle>
         </Section>
 
-        <Section title="布局">
-          <Row k="校验阶段" v={analysis.stage} />
-          <Row k="房间" v={String(analysis.roomCount)} />
-          <Row k="范围" v={analysis.bounds} />
-          {backend !== null && <Row k="渲染后端" v={backend} />}
-          <Row k="已渲染帧" v={frames === 0 ? '0（循环未启动！）' : String(frames)} />
-          {stats !== null && (
-            <>
-              <Row k="已渲染房间" v={String(stats.rooms)} />
-              <Row k="Mesh 数" v={String(stats.meshes)} />
-              <Row k="洞口数" v={String(stats.openings)} />
-              <Row k="结构件" v={String(stats.structures)} />
-            </>
-          )}
+        <Section title={t('section.room')}>
+          <RoomRows room={room} stats={stats} backend={backend} frames={frames} t={t} />
         </Section>
 
-        <Section title={`诊断（${errors.length} 错误 / ${warnings.length} 警告）`}>
+        <Section title={`${t('section.diagnostics')}（${errors.length} / ${warnings.length}）`}>
           {analysis.diagnostics.length === 0 ? (
-            <div style={{ color: 'var(--muted)' }}>无</div>
+            <div style={{ color: 'var(--muted)' }}>{t('value.none')}</div>
           ) : (
             analysis.diagnostics.map((d, i) => (
               <div
@@ -199,23 +243,60 @@ export function App(): React.ReactElement {
               </div>
             ))
           )}
+          {locale === 'en' && (
+            <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>
+              {t('note.diagnosticsLang')}
+            </div>
+          )}
         </Section>
 
         <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 18, lineHeight: 1.7 }}>
-          Phase 1 · 只读视口
+          {t('app.subtitle')}
           <br />
           {firstPerson ? (
             <>
-              点击画面锁定鼠标 · WASD 移动 · Shift 加速
+              {t('hint.fpsLine1')}
               <br />
-              Space 跳 · Esc 退出锁定
+              {t('hint.fpsLine2')}
             </>
           ) : (
-            <>鼠标左键旋转 · 滚轮缩放 · 右键平移</>
+            t('hint.orbit')
           )}
         </div>
       </aside>
     </div>
+  );
+}
+
+function RoomRows({
+  room,
+  stats,
+  backend,
+  frames,
+  t,
+}: {
+  room: Room | null;
+  stats: ViewportStats | null;
+  backend: string | null;
+  frames: number;
+  t: Translate;
+}): React.ReactElement {
+  if (room === null) return <div style={{ color: 'var(--muted)' }}>{t('value.none')}</div>;
+  const portals = room.openings.filter((o) => isPortal(o.type)).length;
+  return (
+    <>
+      <Row k={t('row.size')} v={`${room.size.w} × ${room.size.d} × ${room.size.h} m`} />
+      <Row k={t('row.theme')} v={room.theme} />
+      <Row k={t('row.portals')} v={String(portals)} />
+      <Row k={t('row.openings')} v={String(room.openings.length)} />
+      <Row k={t('row.structures')} v={String(room.structures.length)} />
+      <Row k={t('row.props')} v={String(room.props.length)} />
+      <Row k={t('row.lights')} v={String(room.lights.length)} />
+      <Row k={t('row.markers')} v={String(room.markers.length)} />
+      {backend !== null && <Row k={t('row.backend')} v={backend} />}
+      <Row k={t('row.frames')} v={frames === 0 ? t('value.framesStalled') : String(frames)} />
+      {stats !== null && <Row k={t('row.meshes')} v={String(stats.meshes)} />}
+    </>
   );
 }
 
@@ -287,9 +368,9 @@ function Section({
 
 function Row({ k, v }: { k: string; v: string }): React.ReactElement {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0' }}>
-      <span style={{ color: 'var(--muted)' }}>{k}</span>
-      <span>{v}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', gap: 8 }}>
+      <span style={{ color: 'var(--muted)', flexShrink: 0 }}>{k}</span>
+      <span style={{ textAlign: 'right' }}>{v}</span>
     </div>
   );
 }

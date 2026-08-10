@@ -1,12 +1,13 @@
 import { Group, Mesh, MathUtils } from 'three';
 import type { BufferGeometry, Object3D } from 'three';
 import type { Room, RoomGraphDocument, Theme, WallSide } from '@tjre/schema';
-import { WALL_SIDES } from '@tjre/schema';
+import { WALL_SIDES, isPortal } from '@tjre/schema';
 import { solveLayout } from '@tjre/core';
 import type { LayoutResult, RoomPlacement } from '@tjre/core';
 import { MaterialLibrary } from './materials.js';
 import { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 import { buildStructureGeometry } from './structures.js';
+import { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL, buildPortalGeometry } from './portal.js';
 
 /**
  * RoomGraph → three.js 场景。
@@ -29,6 +30,16 @@ export interface BuildSceneOptions {
   showCeiling?: boolean;
   /** 是否生成内部结构件几何 */
   showStructures?: boolean;
+  /**
+   * **单房间隔离模式** —— 只构建这一个房间，并把它固定在原点、旋转 0。
+   *
+   * 这是编辑器的**常态**：游戏（ENTER THE CUBE）里 36 个房间是可互换的独立
+   * 单元，每局按 seed 随机拼装，房间之间没有固定连接。所以"把整份文档当成
+   * 一个连通空间来摆位"是错的模型 —— 一次只编辑一个房间才对。
+   *
+   * 隔离模式**完全不走布局求解器**：房间就在原点，不存在需要推导的位置。
+   */
+  isolateRoom?: string;
 }
 
 export interface BuildSceneResult {
@@ -39,7 +50,7 @@ export interface BuildSceneResult {
   roomGroups: Map<string, Group>;
   /** 可行走表面的 mesh —— 第一人称漫游的地面射线只需要打这些 */
   walkables: Mesh[];
-  stats: { rooms: number; meshes: number; openings: number; structures: number };
+  stats: { rooms: number; meshes: number; openings: number; structures: number; portals: number };
   /**
    * 释放本次构建产生的全部 GPU 资源。
    *
@@ -83,9 +94,28 @@ export function buildScene(
   let meshCount = 0;
   let openingCount = 0;
   let structureCount = 0;
+  let portalCount = 0;
+
+  const isolate = options.isolateRoom;
 
   for (const room of doc.rooms) {
-    const placement = layout.placements.get(room.id);
+    if (isolate !== undefined && room.id !== isolate) continue;
+
+    // 隔离模式：房间固定在原点，不查求解结果
+    const placement =
+      isolate !== undefined
+        ? ({
+            roomId: room.id,
+            x: 0,
+            y: 0,
+            z: 0,
+            rotationY: 0,
+            hx: room.size.w / 2,
+            hz: room.size.d / 2,
+            origin: 'anchor',
+          } as RoomPlacement)
+        : layout.placements.get(room.id);
+
     // 未被定位的房间跳过 —— 求解器已用 R072 报告，这里静默略过避免叠加噪声
     if (placement === undefined) continue;
 
@@ -101,7 +131,9 @@ export function buildScene(
       geometry: BufferGeometry,
       materialId: string,
       name: string,
-      meta: { kind: string; walkable?: boolean; structureId?: string } = { kind: 'shell' },
+      meta: { kind: string; walkable?: boolean; structureId?: string; openingId?: string } = {
+        kind: 'shell',
+      },
     ): void => {
       const mesh = new Mesh(geometry, materials.get(materialId));
       mesh.name = name;
@@ -126,6 +158,21 @@ export function buildScene(
 
     if (options.showCeiling === true) {
       add(buildCeilingGeometry(room, thickness), surfaceMaterialId(theme, 'ceiling'), 'ceiling');
+    }
+
+    // 传送门：固定样式（门面 + 门框），样式定义在 portal.ts
+    for (const opening of room.openings) {
+      if (!isPortal(opening.type)) continue;
+      const portal = buildPortalGeometry(room, opening);
+      portalCount++;
+      add(portal.surface, PORTAL_SURFACE_MATERIAL, `portal:${opening.id}`, {
+        kind: 'portal',
+        openingId: opening.id,
+      });
+      add(portal.frame, PORTAL_FRAME_MATERIAL, `portal_frame:${opening.id}`, {
+        kind: 'portal',
+        openingId: opening.id,
+      });
     }
 
     if (options.showStructures !== false) {
@@ -163,6 +210,7 @@ export function buildScene(
       meshes: meshCount,
       openings: openingCount,
       structures: structureCount,
+      portals: portalCount,
     },
     dispose: () => {
       for (const geometry of geometries) geometry.dispose();

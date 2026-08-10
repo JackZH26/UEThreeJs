@@ -1,4 +1,4 @@
-import { isDoor, isPassable, parseOpeningRef } from '@tjre/schema';
+import { isDoor, isPassable, isPortal, parseOpeningRef } from '@tjre/schema';
 import type { Rule } from '../diagnostics.js';
 import { wallSpan } from '../lookup.js';
 
@@ -86,6 +86,9 @@ export const R023_sealedPassableOpening: Rule = {
     doc.rooms.forEach((room, ri) => {
       room.openings.forEach((opening, oi) => {
         if (!isPassable(opening.type)) return;
+        // 传送门的另一端在**别的关卡文档**里，本文档内本就没有连接对象。
+        // 对它告警是纯噪声 —— 而且它是房间之间唯一的正常连接方式。
+        if (isPortal(opening.type)) return;
         const ref = `${room.id}.${opening.id}`;
         if (!used.has(ref)) {
           report({
