@@ -48,8 +48,8 @@ pnpm install
 pnpm cli describe examples/etc-m-catwalk-gallery.roomgraph.yaml
 pnpm cli validate examples/etc-m-catwalk-gallery.roomgraph.yaml --strict
 
-# 导出 GLB（可拖进 UE / Blender / 任意 glTF 查看器）
-pnpm cli export examples/etc-m-catwalk-gallery.roomgraph.yaml --out gallery.glb
+# 导出 GLB（可拖进 UE / Blender / 任意 glTF 查看器），落在仓库的 out/
+pnpm cli export examples/etc-m-catwalk-gallery.roomgraph.yaml --out out/gallery.glb
 pnpm verify:three
 pnpm check
 
@@ -100,7 +100,7 @@ apps/cli/          headless CLI —— AI agent 与 CI 的主接口
 apps/editor/       浏览器编辑器：左侧 3D 显示区 / 右侧操作面板，中英文切换，含第一人称漫游
 scripts/           构建期检查（submodule 接线 / 单实例）+ 运行期探针（CDP 自检编辑器）
 three.alias.ts     three.js 模块解析映射（vite 与 vitest 共用的唯一来源）
-examples/          S / M / L 各一个示例关卡，同时是 CI 回归夹具
+examples/          4 个示例关卡（S×2 / M / L），同时是 CI 回归夹具
 three.js/          submodule @ r185，只读参考
 ```
 
@@ -119,12 +119,16 @@ three.js/          submodule @ r185，只读参考
 
 - S/M/L 规格派生表（尺寸 + 传送门），外壳 AABB = 占格尺寸有测试保证
 - 房间外壳几何（带洞口的墙）+ 9 类内部结构件（夹层 / 楼梯 / 廊桥 / 柱梁…）+ 固定样式传送门
+- 道具库第一批 30 个 prefab（碰碰车写实款 / **卡通款** / 乐高人 / 吊顶彩灯串 / 镜面球 /
+  观众长椅 / 自动贩卖机）—— 目录是**闭合枚举**，写错的 prefab id 在 schema 层就被拒；
+  示例见 `etc-s-bumper-arena`（同场摆了写实款与卡通款两种碰碰车）
 - 3D 视口 + 第一人称漫游（可走进房间、爬楼梯上夹层），中英文切换
 - 影调对齐 three.js 的 [SSR + Denoise 示例](https://threejs.org/examples/#webgpu_postprocessing_ssr_denoise)：
   AgX 色调映射、阴影、程序化 IBL、屏幕空间反射 + 时域降噪 + TRAA；
   冷灰工业调色板；关卡自带灯光真正参与渲染
-- **GLB 导出**（`pnpm cli export`）：glTF 与 three.js 同为 Y-up 右手系、单位米，
-  不做坐标换算，手性与单位由 UE 导入器负责。适合核对几何与比例，
+- **GLB 导出**（`pnpm cli export`，编辑器面板里也有按钮）：glTF 与 three.js 同为
+  Y-up 右手系、单位米，不做坐标换算，手性与单位由 UE 导入器负责。
+  两条路径产物**逐字节相同**，都落在 `out/`。适合核对几何与比例，
   **不是最终 UE 资产**（UV 不可平铺、楼梯无斜坡碰撞代理）—— 边界见 `AGENTS.md`
 
 下一步 Phase 2：命令层实现、undo/redo、gizmo 编辑、file watcher 热重载。

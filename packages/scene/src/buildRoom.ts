@@ -5,6 +5,7 @@ import { WALL_SIDES, isPortal, roomOuterPlan, roomPortals, roomSize } from '@tjr
 import { MaterialLibrary } from './materials.js';
 import { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 import { buildStructureGeometry } from './structures.js';
+import { buildPropGeometry } from './props.js';
 import { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL, buildPortalGeometry } from './portal.js';
 import { buildLights } from './lights.js';
 
@@ -37,6 +38,12 @@ export interface BuildRoomOptions {
   /** 是否生成内部结构件几何。默认 `true`。 */
   showStructures?: boolean;
   /**
+   * 是否生成道具几何（`room.props`）。默认 `true`。
+   *
+   * 关掉是为了看清结构：一间摆满碰碰车的房间，地面布局会被道具遮住。
+   */
+  showProps?: boolean;
+  /**
    * 是否把 `room.lights` 里的灯光实例化进场景。默认 `true`。
    *
    * 关掉是为了对照：只留编辑器的主光时更容易看清几何，
@@ -50,6 +57,8 @@ export interface BuildRoomStats {
   openings: number;
   portals: number;
   structures: number;
+  /** 实际建出几何的道具数（不是 mesh 数 —— 一个道具会按材质拆成多个 mesh） */
+  props: number;
   meshes: number;
   /** 实例化的灯光数 */
   lights: number;
@@ -103,6 +112,7 @@ export function buildRoom(
     openings: 0,
     portals: 0,
     structures: 0,
+    props: 0,
     meshes: 0,
     lights: 0,
     shadowCasters: 0,
@@ -112,7 +122,15 @@ export function buildRoom(
     geometry: BufferGeometry,
     materialId: string,
     name: string,
-    meta: { kind: string; walkable?: boolean; structureId?: string; openingId?: string } = {
+    meta: {
+      kind: string;
+      walkable?: boolean;
+      structureId?: string;
+      openingId?: string;
+      propId?: string;
+      /** 覆盖阴影开关；留空 = 按 kind 判断 */
+      shadow?: boolean;
+    } = {
       kind: 'shell',
     },
   ): void => {
@@ -121,9 +139,10 @@ export function buildRoom(
     mesh.userData = { roomId: room.id, ...meta };
     // 外壳与结构件都参与阴影：墙体投影会在地面形成"井底"光影，
     // 那正是参考例子（阳光射进地牢）的观感来源。
-    // 传送门是自发光面片，投影只会给出一块莫名的黑影 —— 排除。
-    mesh.castShadow = meta.kind !== 'portal';
-    mesh.receiveShadow = meta.kind !== 'portal';
+    // 传送门与彩灯是自发光面片，投影只会给出一块莫名的黑影 —— 排除。
+    const shadow = meta.shadow ?? meta.kind !== 'portal';
+    mesh.castShadow = shadow;
+    mesh.receiveShadow = shadow;
     root.add(mesh);
     stats.meshes++;
     geometries.push(geometry);
@@ -178,6 +197,23 @@ export function buildRoom(
           structureId: structure.id,
         },
       );
+    }
+  }
+
+  // ── 道具 ──────────────────────────────────────────────
+  // 道具**不进 walkables**：Prop 是摆放物，不提供可行走表面（见 props.ts）
+  if (options.showProps !== false) {
+    for (const prop of room.props) {
+      const built = buildPropGeometry(prop);
+      if (built === null) continue;
+      stats.props++;
+      for (const part of built.parts) {
+        add(part.geometry, part.materialId, `prop:${prop.id}:${part.materialId}`, {
+          kind: 'prop',
+          propId: prop.id,
+          shadow: !part.emissive,
+        });
+      }
     }
   }
 

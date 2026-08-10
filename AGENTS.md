@@ -113,6 +113,11 @@ glTF 与 three.js 同为 **Y-up 右手系、单位米**，所以**不做坐标�
 正经的 UE 资产要走模块化套件 + commandlet 重建，而不是烘这份网格 ——
 理由与方案见 `packages/scene/src/gltf.ts` 末尾。
 
+**产物落在仓库的 `out/`**（已 gitignore）。编辑器右侧面板也有「导出 GLB」按钮，
+产物与本命令**逐字节相同**（extras 的拼装由 `roomExportExtras()` 唯一提供，
+两条路径共用；`packages/scene/test/gltf.test.ts` 钉住这一点）。
+你作为 agent 应当用 CLI —— 按钮是给人用的。
+
 ### 退出码（用于分支判断，不会变）
 
 | 码   | 含义                                       |
@@ -161,9 +166,32 @@ Document
     ├── theme
     ├── openings[]    **非传送门**的额外开口（窗等）。传送门是派生的，不写在这里
     ├── structures[]  内部结构件：platform/stair/ladder/ramp/catwalk/railing/pillar/beam/partition
-    ├── props[] lights[] markers[]
+    ├── props[]       道具实例。`prefab` 是**闭合枚举**（见下），配色编码在 id 里
+    ├── lights[] markers[]
     └── tags / userData / note
 ```
+
+### 道具（props）
+
+`prefab` 只能取 **prefab 目录**里的 id（`packages/schema/src/prefab.ts`）——
+写错的 id 在 **schema 层**就被拒，不需要额外的校验规则。全部可用 id 跑
+`pnpm cli schema --fragment room` 就能看到（JSON Schema 里带 enum），
+现有关卡用了哪些跑 `describe --json`。
+
+| 字段           | 说明                                                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `at`           | 含义随该 prefab 的 `anchor` 而定：`base` → 底面落点；`top` → **吊点**                                                             |
+| `rotationY`    | 度。**0 = 朝北（-Z）**，增大转向东（+X），与灯光的 `rotationY` 同一套约定                                                         |
+| `scale`        | 等比缩放，默认 1                                                                                                                  |
+| 目录里的 size  | **声明值**（作者判断间距用），有测试断言它等于实际几何的包围盒                                                                    |
+| 目录里的 mount | 复合道具的挂载面。碰碰车 = 脚坑地板 → 司机写**同一个 (x,z)、同一个 rotationY、`at.y` = mount.y** 就正好坐进车里，不需要算三角函数 |
+
+**没有 `mount` 的道具就是不能往上叠东西。** `toon_car_*`（卡通碰碰车）刻意不写 ——
+它的假人是内建的，再叠一个 `minifig_seated_*` 会两个身体互穿。它的原点也与写实款
+不同：在**车体平面中心**（写实款在座位轴线上），所以 `at` 直接写车心。
+
+道具**不提供可行走表面**（不进 `walkables`），但第一人称下会挡路。
+需要可站立 / 可攀爬的东西请用 `structures`。
 
 坐标约定（房间局部，原点 = 地面矩形中心）：
 `north = -Z`，`south = +Z`，`east = +X`，`west = -X`，`up = +Y`。
@@ -256,6 +284,10 @@ pnpm probe:editor --shots /tmp/shots    # 用 CDP 真开浏览器逐关卡自检
   - `lights.ts` 把 `room.lights` 真正实例化（v0.2 之前它是个死字段，写了不渲染）
   - 平台护栏在楼梯 / 斜坡 / 爬梯的接入处**自动断开** —— 由 `to` + `facing` 派生，
     不需要作者声明哪条边留口
+  - `props.ts` + `prefabs/` 把 `room.props` 也接上了（同样曾是死字段）：
+    **道具库第一批 30 个 prefab**（碰碰车写实款 / 碰碰车卡通款 / 乐高人坐姿站姿 /
+    吊顶彩灯串 / 镜面球 / 观众长椅 / 自动贩卖机），目录在 schema、几何在 scene，
+    一个道具按材质合并成几个 mesh
 - **`apps/editor`** —— 3D 视口（`pnpm dev` 启动，WebGPU 自动回退 WebGL2），
   布局是**左侧显示区 / 右侧操作面板**，中英文切换；含第一人称漫游（可走上夹层）
   - 影调对齐 three.js 的 SSR + Denoise 示例：AgX 色调映射、阴影、程序化 IBL、
@@ -263,8 +295,11 @@ pnpm probe:editor --shots /tmp/shots    # 用 CDP 真开浏览器逐关卡自检
   - 后处理构建失败会**回落到直接渲染**并在面板上报，不会黑屏
 
 **尚不存在**（不要假设它们可用）：
-编辑操作、命令实现、file watcher 热重载、预设库（主题/道具都是占位哈希色）、
-导出器、UE 管线、three-mesh-bvh 拾取加速。
+编辑操作、命令实现、file watcher 热重载、主题预设库（主题里的材质 id 只有
+`palette.ts` 那张表，写别的会回落成哈希占位色）、UE 管线、three-mesh-bvh 拾取加速。
+
+> 道具库**已经有第一批**（30 个 prefab，见上），但它远不是 Phase 4 的全部 ——
+> 目录里没有的东西就是没有，不要凭空写一个 prefab id。
 
 ### 改代码时要知道的三条边界
 

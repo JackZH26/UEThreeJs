@@ -19,3 +19,9 @@ playwright-report/
 
 # 编辑器构建产物
 apps/editor/dist/
+
+# 导出产物（`tjre export` 与编辑器的「导出 GLB」按钮都落在这里）
+out/
+
+# 运行期探针的临时产物（dev server 日志、截图、一次性脚本）
+.probe/

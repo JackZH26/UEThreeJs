@@ -4,6 +4,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PointXZ, Room, Structure, WallSide } from '@tjre/schema';
 import { OPPOSITE_WALL, roomSize } from '@tjre/schema';
 import { DIRECTION, advance, rampLength, stairMetrics } from '@tjre/core';
+import { bar, box } from './parts.js';
 
 // 与校验器 R046 共用同一套推导，避免两边各算一遍而漂移
 export { rampLength, stairMetrics } from '@tjre/core';
@@ -33,38 +34,7 @@ const RAIL_THICKNESS = 0.08;
 const RUNG_SPACING = 0.3;
 
 // ── 零件构造 ────────────────────────────────────────────────
-
-function box(
-  size: { w: number; h: number; d: number },
-  center: { x: number; y: number; z: number },
-  rotationY = 0,
-): BufferGeometry {
-  const geometry = new BoxGeometry(size.w, size.h, size.d);
-  if (rotationY !== 0) geometry.rotateY(rotationY);
-  geometry.translate(center.x, center.y, center.z);
-  return geometry;
-}
-
-/** 沿两点连线放一根方棒（用于横梁、隔墙、走道段、扶手） */
-function bar(
-  from: PointXZ,
-  to: PointXZ,
-  y: number,
-  width: number,
-  height: number,
-): BufferGeometry | null {
-  const dx = to.x - from.x;
-  const dz = to.z - from.z;
-  const length = Math.hypot(dx, dz);
-  if (length < 1e-6) return null;
-  // atan2(dx, dz)：让方棒的局部 +Z 指向 from→to
-  const rotationY = Math.atan2(dx, dz);
-  return box(
-    { w: width, h: height, d: length },
-    { x: (from.x + to.x) / 2, y, z: (from.z + to.z) / 2 },
-    rotationY,
-  );
-}
+// `box` / `bar` 来自 `parts.ts`（与道具构造器共用同一份实现）
 
 /**
  * 护栏上的一个开口 —— 楼梯 / 斜坡 / 爬梯接进平台的位置必须断开，

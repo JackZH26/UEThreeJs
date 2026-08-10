@@ -1,15 +1,19 @@
 import { z } from 'zod';
+import { PrefabIdSchema } from './prefab.js';
 import { HexColor, Id, PointXYZ, PositiveMeters, Size3, Tags, UserData } from './primitives.js';
 
 /**
  * Prop —— 来自预设库的道具实例。
  * 与 Structure 的区别：Prop 不定义可行走表面，只是摆放物。
+ *
+ * `prefab` 是**闭合枚举**（见 prefab.ts）：写错的 id 在 schema 层就被拒，
+ * 而不是静默渲染出一个空道具。配色也编码在 prefab id 里，所以这里没有颜色字段。
  */
 export const Prop = z
   .strictObject({
     id: Id,
-    prefab: Id.describe('引用 @tjre/presets 中的 prefab id'),
-    at: PointXYZ.describe('房间局部位置'),
+    prefab: PrefabIdSchema,
+    at: PointXYZ.describe('房间局部位置；含义随 prefab 的 anchor 而定（底面 / 吊点）'),
     rotationY: z.number().finite().default(0).describe('绕 Y 轴旋转，单位度'),
     scale: PositiveMeters.default(1).describe('等比缩放；非等比缩放不在 v0.1 范围内'),
     snap: z

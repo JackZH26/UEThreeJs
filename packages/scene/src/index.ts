@@ -21,13 +21,27 @@
 export { MaterialLibrary } from './materials.js';
 export type { MaterialLibraryOptions } from './materials.js';
 
-export { PALETTE, paletteIds, surfaceSpec } from './palette.js';
+export {
+  PALETTE,
+  carPaintMaterial,
+  neonMaterial,
+  paletteIds,
+  plasticMaterial,
+  surfaceSpec,
+} from './palette.js';
 export type { SurfaceSpec } from './palette.js';
+
+export { ball, bar, blob, box, cyl, ring, strut, taperedBox } from './parts.js';
+export type { CylinderOptions } from './parts.js';
+
+export { buildPropGeometry, prefabMaterialIds } from './props.js';
+export type { PropGeometryResult, PropMeshPart } from './props.js';
+export type { PrefabBuilder, PropPart } from './propPart.js';
 
 export { buildLight, buildLights } from './lights.js';
 export type { BuiltLight, BuiltLights } from './lights.js';
 
-export { exportGLB } from './gltf.js';
+export { exportGLB, roomExportExtras } from './gltf.js';
 export type { ExportGLBOptions, ExportGLBResult } from './gltf.js';
 
 export { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';

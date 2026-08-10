@@ -1,0 +1,444 @@
+# ENTER THE CUBE —— Bumper Arena（S 规格）
+#
+# 一个房间 = 一个独立关卡。文件里**不写**尺寸和传送门：
+#   spec: S  →  占格 1×1  →  外廓 30×30m  →  净内空 28.5×28.5m（±14.25）
+#              →  层高 12m  →  四面墙各 1 个传送门（居中，3.0×3.2m）
+# 跑 `pnpm cli describe examples/etc-s-bumper-arena.roomgraph.yaml` 看派生结果。
+#
+# 玩法：一座碰碰车场。中央 14.5×14.5m 的抛光场地是低位战场（视野开阔、掩体只有车），
+# 四周一圈 4m 高的观众夹层是高位；上夹层只有两部楼梯，在走道的对角两角，是争夺点。
+# 夹层贴墙一圈，正好罩在四个传送门上方 —— 从任一传送门进来都先落在地面走道上。
+#
+# ── 平面分带（这是让各结构互不打架的关键）────────────────────
+#   场地   |x|,|z| ≤ 7.25    抛光地坪 + 7 辆碰碰车（4 写实 / 3 卡通），**没有任何结构件**
+#   走道   7.25 ~ 14.25      地面环形走道，深 7m（夹层下方，净高 3.7m，串起 4 个传送门）
+#                            NE / SW 两个 11.75×7 的角是楼梯井（上方无楼板）
+#   夹层   同上，标高 4.0    观众区（4 块贴壁平台 + NW / SE 两个角平台）
+#
+# ⚠️ 走道为什么是 7m 而不是 5m：楼梯进深由踢面按 Blondel 公式**派生**，
+#    rise 4.0m / 踢面 0.18 → 进深 6.21m。5m 走道放不下，只能把踢面加到 0.20
+#    （进深 4.60m）—— 那对一个观众场馆来说太陡。加宽走道比压坡度对。
+#    场地缩到 14.5×14.5 = 210㎡ / 7 辆车 = 30㎡ 每辆，比真实碰碰车场还宽松。
+# ⚠️ 楼梯井还得比楼梯**长**：只有 7m 的话楼梯脚离墙 0.79m，人得侧身挤进那条缝
+#    才踏得上第一级 —— 所以 deck_n / deck_s 缩短到 9.75m，把井拉到 11.75m，
+#    楼梯脚前留出 5.5m 的正面进入空间。
+#
+# ── 竖向 ────────────────────────────────────────────────────
+#   0.00   场地 / 走道地面
+#   0.90   场地围栏顶（railing，南北正中各留一个 2m 闸口，正对传送门）
+#   3.70   夹层底面（> 传送门顶 3.20，所以门口不撞头）
+#   4.00   夹层面 = 两部楼梯的落点
+#  11.20   吊顶桁架底面（彩灯串与镜面球都吊在这个标高）
+#  12.00   天花
+
+schemaVersion: '0.2.0'
+
+meta:
+  name: ETC Bumper Arena
+  description: >
+    S 规格碰碰车场。中央 14.5×14.5m 抛光场地摆 7 辆碰碰车 —— 4 辆写实款（乐高人驾驶）
+    + 3 辆卡通款（大眼睛笑脸、假人驾驶、车尾飘彩旗），场地内没有任何结构件；
+    四周 7m 深的地面走道 + 标高 4m 的观众夹层，
+    夹层由走道对角两角的楼梯井接入；吊顶 5 根桁架下挂 6 串彩灯与一颗镜面球。
+
+themes:
+  - id: arena
+    name: Bumper Arena
+    surfaces:
+      # 地坪是全场最光的面（roughness 0.10）—— 彩车与彩灯映在地上是这个房间的主画面
+      floor: arena_floor_gloss
+      ceiling: steel_deck_ceiling
+      wall: arena_wall_dark
+      structure: steel_grate_dark
+    lightPreset: arena_disco
+    ambientColor: '#1a1622'
+
+rooms:
+  - id: bumper_arena
+    name: Bumper Arena
+    spec: S
+    theme: arena
+
+    structures:
+      # ── 观众夹层：贴四壁一圈，标高 4.0 ─────────────────────────
+      # 四块贴壁平台 + NW / SE 两个 7×7 角平台把它们连起来。
+      # **NE 与 SW 两个角留空** —— 那两处是楼梯井：楼梯要爬到 4.0m，
+      # 而夹层底面只有 3.7m，所以楼梯上方必须没有楼板，否则直接顶穿。
+      # 于是夹层是两段连通的 L 形（W+NW+N 与 E+SE+S），各由一部楼梯接入。
+      # 平台之间只共边不叠面（同高度叠面会 z-fighting）。
+      #
+      # ⚠️ deck_n / deck_s **刻意比另两块短**（9.75 而不是 14.5）：楼梯井必须比
+      # 楼梯本身长，否则楼梯脚会顶到墙上，只剩一条 0.75m 的缝可以侧身挤进去 ——
+      # 那样楼梯等于走不上去（第一版就是这个毛病）。缩短之后楼梯井长 11.75m，
+      # 楼梯占 6.21m，脚下还剩 5.5m 的回转空间，从走道正面就能踏上去。
+      - id: deck_n
+        type: platform
+        rect: { x: -2.375, z: -10.75, w: 9.75, d: 7 }
+        elevation: 4
+        thickness: 0.3
+        # east 边临 NE 楼梯井 —— 楼梯落点处的开口由 to + facing 自动派生
+        railing: [south, east]
+
+      - id: deck_s
+        type: platform
+        rect: { x: 2.375, z: 10.75, w: 9.75, d: 7 }
+        elevation: 4
+        thickness: 0.3
+        railing: [north, west]
+
+      - id: deck_e
+        type: platform
+        rect: { x: 10.75, z: 0, w: 7, d: 14.5 }
+        elevation: 4
+        thickness: 0.3
+        railing: [west, north]
+
+      - id: deck_w
+        type: platform
+        rect: { x: -10.75, z: 0, w: 7, d: 14.5 }
+        elevation: 4
+        thickness: 0.3
+        railing: [east, south]
+
+      # 两个角平台：四条边分别贴墙或与相邻夹层平齐，所以**一根护栏都不需要**
+      - id: corner_nw
+        type: platform
+        rect: { x: -10.75, z: -10.75, w: 7, d: 7 }
+        elevation: 4
+        thickness: 0.3
+        railing: []
+
+      - id: corner_se
+        type: platform
+        rect: { x: 10.75, z: 10.75, w: 7, d: 7 }
+        elevation: 4
+        thickness: 0.3
+        railing: []
+
+      # ── 上夹层的两部楼梯：都在**围栏之外**的地面走道里 ────────────
+      # 各占一个楼梯井（NE / SW），**贴着墙**横向爬升，顶端搭在相邻夹层的边上。
+      # 碰碰车场地里因此一件结构都没有 —— 场地只有车。
+      #
+      # 走法：沿东侧走道往北走进楼梯井（井里 5.5m 宽的空地），左转正面上楼梯，
+      # 到顶就是 deck_n。楼梯**贴北墙**放（而不是摆在井中央），
+      # 这样走道环线从它南侧 5.4m 的净宽过，绕行不用贴墙挤。
+      #
+      # 进深由踢面高度按 Blondel 公式推导，**不能直接指定**：
+      #   rise 4.0m，stepHeight 0.18 → tread 0.27 → 23 级 → 进深 6.21m
+      #   NE：顶端 = (8.75 − 6.21, -13.45) = (2.54, -13.45)，落在 deck_n 东边缘上
+      #       （边缘 x = 2.5，差 0.04m，R046 的落点容差是 0.5m）
+      # R046 会核对落点；改 stepHeight 或 deck_n 的长度就得重算 from。
+      - id: stair_ne
+        type: stair
+        from: { x: 8.75, z: -13.45 }
+        facing: west
+        fromElevation: 0
+        to: deck_n
+        width: 1.6
+        stepHeight: 0.18
+        railing: both
+
+      - id: stair_sw
+        type: stair
+        from: { x: -8.75, z: 13.45 }
+        facing: east
+        fromElevation: 0
+        to: deck_s
+        width: 1.6
+        stepHeight: 0.18
+        railing: both
+
+      # ── 场地围栏：沿 ±7.25 走满一圈，两条折线各包三面 ─────────────
+      # 楼梯已经挪出场地，所以围栏不再需要为它留口；只在南北两侧**正中**
+      # 各留一个 2m 闸口，正对该侧的传送门 —— 传送门进来穿过走道就是闸口。
+      - id: fence_w
+        type: railing
+        path:
+          - { x: -1, z: -7.25 }
+          - { x: -7.25, z: -7.25 }
+          - { x: -7.25, z: 7.25 }
+          - { x: -1, z: 7.25 }
+        elevation: 0
+        height: 0.9
+
+      - id: fence_e
+        type: railing
+        path:
+          - { x: 1, z: -7.25 }
+          - { x: 7.25, z: -7.25 }
+          - { x: 7.25, z: 7.25 }
+          - { x: 1, z: 7.25 }
+        elevation: 0
+        height: 0.9
+
+      # ── 吊顶桁架：5 根满宽横梁，彩灯串与镜面球吊在梁底（11.2m）────
+      - {
+          id: truss_1,
+          type: beam,
+          from: { x: -14.25, z: -7 },
+          to: { x: 14.25, z: -7 },
+          elevation: 11.2,
+          width: 0.35,
+          height: 0.5,
+        }
+      - {
+          id: truss_2,
+          type: beam,
+          from: { x: -14.25, z: -3.5 },
+          to: { x: 14.25, z: -3.5 },
+          elevation: 11.2,
+          width: 0.35,
+          height: 0.5,
+        }
+      - {
+          id: truss_3,
+          type: beam,
+          from: { x: -14.25, z: 0 },
+          to: { x: 14.25, z: 0 },
+          elevation: 11.2,
+          width: 0.35,
+          height: 0.5,
+        }
+      - {
+          id: truss_4,
+          type: beam,
+          from: { x: -14.25, z: 3.5 },
+          to: { x: 14.25, z: 3.5 },
+          elevation: 11.2,
+          width: 0.35,
+          height: 0.5,
+        }
+      - {
+          id: truss_5,
+          type: beam,
+          from: { x: -14.25, z: 7 },
+          to: { x: 14.25, z: 7 },
+          elevation: 11.2,
+          width: 0.35,
+          height: 0.5,
+        }
+
+    # ── 道具 ────────────────────────────────────────────────────
+    # prefab id 是**闭合枚举**（packages/schema/src/prefab.ts），配色编码在 id 里。
+    # 尺寸与锚点跑 `pnpm cli schema --fragment room` 或看目录里的 size / anchor。
+    props:
+      # 7 辆碰碰车。车心都在 |x|,|z| ≤ 5.5 内（车的外接半径 1.72m，给围栏留余量），
+      # 两两间距 ≥ 3.5m（两车鼻对鼻的最小中心距是 3.1m）。
+      # 楼梯已经在围栏外，所以场地里只需要避开彼此。
+      # rotationY: 0 = 车头朝北，增大转向东。
+      - { id: car_pink, prefab: bumper_car_pink, at: { x: -4.5, y: 0, z: -3.0 }, rotationY: 30 }
+      - { id: car_blue, prefab: bumper_car_blue, at: { x: -1.0, y: 0, z: -4.9 }, rotationY: 340 }
+      - { id: car_red, prefab: bumper_car_red, at: { x: 2.8, y: 0, z: -2.2 }, rotationY: 115 }
+      - { id: car_mint, prefab: bumper_car_mint, at: { x: 0.5, y: 0, z: 3.4 }, rotationY: 155 }
+
+      # ── 3 辆卡通款（toon_car_*）─────────────────────────────────
+      # 与写实款的两点不同，都会影响怎么摆：
+      #   1. **假人内建**，所以下面不给它们配 minifig（叠上去会两个身体互穿）；
+      #      目录里也刻意没有 mount，就是为了不引诱人再叠一个。
+      #   2. 原点在**车体平面中心**（写实款在座位轴线上），所以 at 就是车心。
+      # 尾旗飘在 y≈1.7~2.0，高过场上任何车身（最高的假人头 1.54m）—— 所以旗子
+      # 只可能撞到**另一根旗杆**。三辆车两两间距 ≥ 3.5m 且旗尾不互指，够开了。
+      - { id: car_cyan, prefab: toon_car_cyan, at: { x: 5.2, y: 0, z: 0.4 }, rotationY: 60 }
+      - { id: car_yellow, prefab: toon_car_yellow, at: { x: -4.6, y: 0, z: 1.6 }, rotationY: 200 }
+      - { id: car_purple, prefab: toon_car_purple, at: { x: 4.3, y: 0, z: 4.4 }, rotationY: 250 }
+
+      # 4 位乐高司机（只有写实款要配）。**与所属车同 (x,z)、同 rotationY，y 写车的挂载面 0.26**
+      # （= bumper_car 的 mount.y，脚坑地板）—— 于是屁股落在座垫上、手落在方向盘上，
+      # 作者不需要按车的朝向去算座位的世界坐标。
+      - {
+          id: drv_pink,
+          prefab: minifig_seated_cyan,
+          at: { x: -4.5, y: 0.26, z: -3.0 },
+          rotationY: 30,
+        }
+      - {
+          id: drv_blue,
+          prefab: minifig_seated_yellow,
+          at: { x: -1.0, y: 0.26, z: -4.9 },
+          rotationY: 340,
+        }
+      - {
+          id: drv_red,
+          prefab: minifig_seated_white,
+          at: { x: 2.8, y: 0.26, z: -2.2 },
+          rotationY: 115,
+        }
+      - {
+          id: drv_mint,
+          prefab: minifig_seated_red,
+          at: { x: 0.5, y: 0.26, z: 3.4 },
+          rotationY: 155,
+        }
+
+      # 吊顶彩灯：4 串横跨场地（挂在 1/2/4/5 号桁架下），2 串纵向压在两侧观众区上方。
+      # anchor=top，所以 at 直接写梁底标高 11.2；灯串自己向下垂 0.7m。
+      - { id: fest_n1, prefab: festoon_party, at: { x: 0, y: 11.2, z: -7 } }
+      - { id: fest_n2, prefab: festoon_warm, at: { x: 0, y: 11.2, z: -3.5 } }
+      - { id: fest_s1, prefab: festoon_cool, at: { x: 0, y: 11.2, z: 3.5 } }
+      - { id: fest_s2, prefab: festoon_party, at: { x: 0, y: 11.2, z: 7 } }
+      - { id: fest_e, prefab: festoon_warm, at: { x: 10.5, y: 11.2, z: 0 }, rotationY: 90 }
+      - { id: fest_w, prefab: festoon_cool, at: { x: -10.5, y: 11.2, z: 0 }, rotationY: 90 }
+
+      # 镜面球吊在中间那根桁架下、场地正中 —— 金属度 1 的低多边形球是 SSR 的主角
+      - { id: disco_ball, prefab: mirror_ball, at: { x: 0, y: 11.2, z: 0 } }
+
+      # 观众长椅：贴外墙摆，坐者朝场地（rotationY 0 = 朝北）
+      - { id: bench_n1, prefab: bench_arena, at: { x: -4, y: 4, z: -13.2 }, rotationY: 180 }
+      - { id: bench_n2, prefab: bench_arena, at: { x: 0.5, y: 4, z: -13.2 }, rotationY: 180 }
+      - { id: bench_s1, prefab: bench_arena, at: { x: -0.5, y: 4, z: 13.2 }, rotationY: 0 }
+      - { id: bench_s2, prefab: bench_arena, at: { x: 4, y: 4, z: 13.2 }, rotationY: 0 }
+      - { id: bench_e, prefab: bench_arena, at: { x: 13.2, y: 4, z: 0 }, rotationY: 270 }
+      - { id: bench_w, prefab: bench_arena, at: { x: -13.2, y: 4, z: 0 }, rotationY: 90 }
+
+      # 4 位站姿观众，趴在夹层内侧护栏后 0.65m 处往场地里看
+      - {
+          id: fan_n1,
+          prefab: minifig_standing_cyan,
+          at: { x: -3.2, y: 4, z: -7.9 },
+          rotationY: 180,
+        }
+      - { id: fan_n2, prefab: minifig_standing_lime, at: { x: 1.5, y: 4, z: -7.9 }, rotationY: 180 }
+      - { id: fan_s1, prefab: minifig_standing_red, at: { x: -1.6, y: 4, z: 7.9 }, rotationY: 0 }
+      - { id: fan_e1, prefab: minifig_standing_white, at: { x: 7.9, y: 4, z: -2 }, rotationY: 270 }
+
+      # ── 自动贩卖机（掩体）──────────────────────────────────────
+      # 场馆里唯一的浅色实体：1.95m 高、1.05m 宽，站直挡得住人，所以每台都配
+      # 一个 kind=cover 的 marker（见下）。全部**背面贴墙**摆 ——
+      # 背面在局部 z=+0.41，所以 at 放在离墙 0.43m 处；rotationY 决定朝哪面墙：
+      #   0 = 面朝北（贴南墙）/ 90 = 面朝东（贴西墙）/ 180 = 贴北墙 / 270 = 贴东墙
+      #
+      # 二楼 4 台：两个角平台各 1 台（那两块 7×7 完全空着），东西两条看台各 1 台。
+      # 刻意避开长椅与站姿观众的位置，也不挡夹层的环形通行。
+      - { id: vend_nw, prefab: vending_machine, at: { x: -11.5, y: 4, z: -13.8 }, rotationY: 180 }
+      - { id: vend_se, prefab: vending_machine, at: { x: 11.5, y: 4, z: 13.8 }, rotationY: 0 }
+      - { id: vend_e, prefab: vending_machine, at: { x: 13.8, y: 4, z: -4.6 }, rotationY: 270 }
+      - { id: vend_w, prefab: vending_machine, at: { x: -13.8, y: 4, z: 4.6 }, rotationY: 90 }
+
+      # 一楼 2 台：地面走道里，分别在北、东传送门附近的墙边 ——
+      # 既是刚进门时的第一个掩体，也给那圈被夹层压暗的走道一点自发光
+      - { id: vend_gn, prefab: vending_machine, at: { x: -5, y: 0, z: -13.8 }, rotationY: 180 }
+      - { id: vend_ge, prefab: vending_machine, at: { x: 13.8, y: 0, z: 3.6 }, rotationY: 270 }
+
+    # 灯光单位是物理单位（point = 坎德拉），配合 AgX + exposure 1.57。
+    # 布光思路与工业关卡相反：这里**故意**让彩色光主导，暖白光只负责让车漆有实体感。
+    # 自发光的灯泡本身不照亮任何东西（three 的 emissive 只影响自身像素），
+    # 所以彩色氛围必须由真实点光提供 —— 彩灯串只是把光源"画"出来。
+    #
+    # ⚠️ 强度是**按截图收敛**的，不是拍出来的（同 CONVENTIONS §5.8）。
+    # 第一版把主灯给到 1300、补光给到 280，结果地坪被冲成亮灰色：
+    # roughness 0.10 的地面本该是深色镜面，反射才看得见 —— 过曝之后
+    # 反射和霓虹全被高光吃掉，等于白付了 SSR 的代价。宁可偏暗。
+    # 阴影预算：点光是 cube shadow map（6 面），只给主灯开，其余显式关掉。
+    lights:
+      - {
+          id: lamp_main,
+          type: point,
+          at: { x: 0, y: 10.6, z: -3.5 },
+          intensity: 520,
+          range: 30,
+          color: '#fff0d8',
+          castShadow: true,
+        }
+      - {
+          id: lamp_fill,
+          type: point,
+          at: { x: 0, y: 10.6, z: 3.5 },
+          intensity: 340,
+          range: 26,
+          color: '#ffe8cc',
+          castShadow: false,
+        }
+      # 场地四角的彩色氛围光，对应吊顶那几串彩灯的色相
+      - {
+          id: glow_magenta,
+          type: point,
+          at: { x: -5.5, y: 9.2, z: -5.5 },
+          intensity: 620,
+          range: 18,
+          color: '#ff3fc0',
+          castShadow: false,
+        }
+      - {
+          id: glow_cyan,
+          type: point,
+          at: { x: 5.5, y: 9.2, z: -5.5 },
+          intensity: 620,
+          range: 18,
+          color: '#35d0ff',
+          castShadow: false,
+        }
+      - {
+          id: glow_amber,
+          type: point,
+          at: { x: -5.5, y: 9.2, z: 5.5 },
+          intensity: 560,
+          range: 18,
+          color: '#ffb03a',
+          castShadow: false,
+        }
+      - {
+          id: glow_violet,
+          type: point,
+          at: { x: 5.5, y: 9.2, z: 5.5 },
+          intensity: 620,
+          range: 18,
+          color: '#8a5cff',
+          castShadow: false,
+        }
+      # 夹层下方的地面走道会被平台完全遮住 —— 不补光就是四条黑带。
+      # 位置压在走道中线偏外，避免在抛光地坪上正对视线拍出一团大光斑。
+      - {
+          id: fill_n,
+          type: point,
+          at: { x: 0, y: 2.6, z: -12 },
+          intensity: 150,
+          range: 15,
+          color: '#8fb6d8',
+          castShadow: false,
+        }
+      - {
+          id: fill_s,
+          type: point,
+          at: { x: 0, y: 2.6, z: 12 },
+          intensity: 150,
+          range: 15,
+          color: '#8fb6d8',
+          castShadow: false,
+        }
+      - {
+          id: fill_e,
+          type: point,
+          at: { x: 12, y: 2.6, z: 0 },
+          intensity: 150,
+          range: 15,
+          color: '#8fb6d8',
+          castShadow: false,
+        }
+      - {
+          id: fill_w,
+          type: point,
+          at: { x: -12, y: 2.6, z: 0 },
+          intensity: 150,
+          range: 15,
+          color: '#8fb6d8',
+          castShadow: false,
+        }
+
+    markers:
+      # 编辑器第一人称漫游的起始点：南侧走道，正对南闸口与场地
+      # （游戏里的出生点由对局逻辑决定）
+      - { id: preview_start, kind: spawn, at: { x: 2.5, y: 0, z: 11.5 } }
+      - { id: perch_n, kind: cover, at: { x: -2.375, y: 4, z: -10.75 }, radius: 4 }
+      - { id: perch_s, kind: cover, at: { x: 2.375, y: 4, z: 10.75 }, radius: 4 }
+      # 每台自动贩卖机一个掩体点 —— 道具本身只是几何，"能躲人"这件事得写成
+      # gameplay 数据 AI 才知道。半径按单台机身（1.05m 宽）取 1.2m。
+      - { id: cover_vend_nw, kind: cover, at: { x: -11.5, y: 4, z: -13.8 }, radius: 1.2 }
+      - { id: cover_vend_se, kind: cover, at: { x: 11.5, y: 4, z: 13.8 }, radius: 1.2 }
+      - { id: cover_vend_e, kind: cover, at: { x: 13.8, y: 4, z: -4.6 }, radius: 1.2 }
+      - { id: cover_vend_w, kind: cover, at: { x: -13.8, y: 4, z: 4.6 }, radius: 1.2 }
+      - { id: cover_vend_gn, kind: cover, at: { x: -5, y: 0, z: -13.8 }, radius: 1.2 }
+      - { id: cover_vend_ge, kind: cover, at: { x: 13.8, y: 0, z: 3.6 }, radius: 1.2 }
+
+    userData:
+      attraction: bumper_cars
+      carCount: 7

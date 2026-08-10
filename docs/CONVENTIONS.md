@@ -260,7 +260,7 @@ Chrome 把编辑器跑起来，遍历每个关卡，**机器判定**「是否在
 ⚠️ **控制台必须在遍历完所有关卡之后才汇总。** 第一版在切关卡前就打印了，
 结果只有 L 规格触发的那个错误压根没被打出来 —— 表现成"一张黑图 + 控制台干净"。
 
-### 5.4 WebGPU 管线的三个坑（都实际踩过）
+### 5.4 WebGPU 管线的四个坑（都实际踩过）
 
 1. **开 SSR 时必须关 MSAA。** 后处理要把场景 pass 的深度纹理拷给 SSR，
    多重采样深度纹理拷不到单采样目标：`sample count (4) and destination
@@ -274,8 +274,44 @@ sample count (1) does not match`，整条 command buffer 随之失效。
 3. **用 `RectAreaLight` 前必须 `RectAreaLightNode.setLTC(...)`。** 否则整个房间
    渲染成全黑，而**帧数照涨**。这个症状最有欺骗性 —— 排查时先问
    "这个房间有什么别的房间没有的东西"。见 `apps/editor/src/rectAreaLightSupport.ts`。
+4. **canvas 的 alpha 活不过后处理链。** 想用"透明 canvas + CSS 背景层"的话，
+   `alpha: true` + `setClearAlpha(0)` 是不够的：SSR → 时域重投影 → 递归降噪 →
+   TRAA 这一串跑完，输出仍是不透明的。实测过（CSS 背景涂成纯红，画面里一点红都没有）。
+   要背景就用 `scene.background` —— 它在两条渲染路径（有/无后处理）里行为一致。
 
-### 5.5 tsx 的一个坑：shebang + 动态 import 不能共存
+### 5.5 `scene.background` 在 WebGPU 下有两条完全不同的路
+
+`Background.js` 只认 `null` / `Color` / **node** 三种，但 `NodeManager.js` 的
+`updateBackground()` 会先把 `Texture` 包成 node ——**包法取决于 `mapping`**：
+
+| 条件                                                                                | 得到的 node                                                   | 表现                                      |
+| ----------------------------------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------- |
+| `mapping = EquirectangularReflectionMapping`（或 cube）+ `backgroundBlurriness > 0` | `pmremTexture(background)`                                    | **天空盒**，随相机转；虚化走 PMREM mip 链 |
+| 同上但 `backgroundBlurriness === 0`                                                 | `cubeMapNode(...)`                                            | 天空盒，不虚化                            |
+| `background.isTexture`（普通 2D）                                                   | `texture(background, screenUV.flipY()).setUpdateMatrix(true)` | **屏幕空间**贴图，转视角不动              |
+
+我们用第一条（`Viewport.tsx`）。选它的理由是**天空盒随相机转，空间关系连贯**；
+平面图怎么转视角都不动，一眼看出是贴上去的画。
+
+顺带两个由此得到的事实：
+
+- **虚化不用自己做。** `backgroundBlurriness` 走 PMREM 的预滤波 mip 链，
+  是辐照度正确的模糊，比预先高斯模糊一张图更对，也不用额外资产。
+- 走平面图那条路时 `setUpdateMatrix(true)` 会让贴图矩阵生效，
+  所以 `offset` / `repeat` 可以做 CSS `cover` 那种裁切（`uv * repeat + offset`，
+  `repeat < 1` 是放大）—— 但宽高比一变就得重算，否则会拉变形。
+
+⚠️ **`backgroundBlurriness` 的取值要按相机姿态来定，不能照抄参考实现。**
+参考例子（`webgpu_loader_gltf_transmission`）用 0.35，那是**水平**视角 ——
+画面里有地平线和天空，0.35 之后仍有结构。我们的相机是**俯视**的，
+看到的基本是全景图的地面半球，0.35 会糊成一片没有细节的暖色渐变。
+实测收敛到 0.25。
+
+⚠️ 背景是在**场景 pass 里**画的，所以**会被 AgX + 调色链处理**，不是 HDRI 原样。
+想要原样就得在链尾用场景 pass 的 alpha 做合成 —— 那要多一套只在开 SSR 时
+才生效的代码路径，两条渲染路径观感还会不一致，不值得。
+
+### 5.6 tsx 的一个坑：shebang + 动态 import 不能共存
 
 `apps/cli/src/index.ts` 有 shebang（`bin` 入口要能直接执行）。往这个文件里写
 动态 `import()` 会让 tsx **解析失败**：它的 `transformDynamicImport` 先用一个
@@ -288,7 +324,29 @@ sample count (1) does not match`，整条 command buffer 随之失效。
 所以需要懒加载的命令统一放在 `apps/cli/src/lazyCommands.ts`（**没有 shebang**），
 `index.ts` 静态 import 那个模块。
 
-### 5.6 光照强度不能照抄参考实现
+### 5.7 dev-only 的 Vite 中间件：写盘与起进程的边界
+
+编辑器的「导出 GLB」与「打开 out 目录」需要浏览器做不到的两件事：
+把字节写进仓库目录、打开系统文件管理器。它们由
+`apps/editor/vite-plugin-export.ts` 代做。这是本仓库里**唯一会写文件、
+会起子进程**的 HTTP 接口，所以约束写死在这里：
+
+1. **`apply: 'serve'`** —— 只在 dev server 挂载。`vite build` 的产物里
+   不存在这两个端点（有 grep 验证：运行代码里 0 处 `child_process` /
+   `writeFileSync`）。
+2. **不接受路径，只接受文件名。** 白名单消毒（只留 `A-Za-z0-9._-`）
+   → 剥掉开头的点 → 限长 → 再断言解析结果确实落在 `out/` 里。
+   前三步足够，第四步是兜底：以后有人改坏消毒规则，逃逸会被拦在写盘之前。
+3. **`reveal` 不带任何参数**，永远只打开固定的 `out/`。
+   "打开我给的路径"等于把本机文件管理器交给页面 —— 不做。
+4. 用 `execFile` + 参数数组，**不用** `exec` + 拼字符串（后者过 shell）。
+5. 请求体有上限（64 MB）。
+6. 桥不可用时客户端必须有**无声回落**（这里是浏览器下载）+ 面板上明确说明，
+   不能让按钮变成死的。
+
+⚠️ Windows 的 `explorer.exe` **成功时也返回退出码 1**，那一侧必须忽略退出码。
+
+### 5.8 光照强度不能照抄参考实现
 
 从别的项目/示例搬色调曲线（tone mapping、对比、gamma）是安全的，
 **搬光强不是**：光强只在特定的 albedo 与遮挡分布下成立。

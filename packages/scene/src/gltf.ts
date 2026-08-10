@@ -1,5 +1,7 @@
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import type { Object3D } from 'three';
+import type { Room } from '@tjre/schema';
+import { roomOuterPlan, roomSize } from '@tjre/schema';
 
 /**
  * ============================================================
@@ -88,6 +90,35 @@ export interface ExportGLBResult {
   glb: Uint8Array;
   /** 被跳过的面光源 id —— 调用方应当把它转告用户 */
   skippedAreaLights: string[];
+}
+
+/**
+ * 房间的追溯信息 —— **唯一来源**。
+ *
+ * 有两个调用方会导出同一个房间：CLI 的 `tjre export` 和编辑器里的「导出 GLB」
+ * 按钮。它们落在同一个 `out/` 目录，产物**应当逐字节相同**（有测试比对）。
+ * 而 extras 是唯一由调用方拼装的部分 —— 两边各写一份的话，
+ * 任何一侧改了字段，另一侧就静默漂移，而"字节相同"这个性质会悄悄失效。
+ * 所以这里只有一份实现，两边都调它。
+ *
+ * `sourceFile` 由调用方给：CLI 有真实路径，编辑器只有关卡文件名。
+ */
+export function roomExportExtras(params: {
+  schemaVersion: string;
+  sourceFile: string;
+  room: Room;
+}): Record<string, unknown> {
+  const { schemaVersion, sourceFile, room } = params;
+  return {
+    generator: 'ThreeJsRoomEditor',
+    schemaVersion,
+    sourceFile,
+    roomId: room.id,
+    spec: room.spec,
+    outerPlanMeters: roomOuterPlan(room),
+    interiorMeters: roomSize(room),
+    note: 'Y-up right-handed, metres. UE glTF importer handles the Z-up/left-handed conversion.',
+  };
 }
 
 /** glTF 的 punctual light 扩展支持的类型 */

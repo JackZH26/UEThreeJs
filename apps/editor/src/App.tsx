@@ -6,9 +6,12 @@ import { roomFootprint, roomOuterPlan, roomPortals, roomSize } from '@tjre/schem
 import { Viewport } from './Viewport.js';
 import type { ViewportStats } from './Viewport.js';
 import { ErrorBoundary } from './ErrorSurface.js';
+import { exportRoomGLB, revealOutDir } from './exportRoom.js';
+import type { ExportOutcome } from './exportRoom.js';
 import { LOCALES, LOCALE_LABEL, useI18n } from './i18n.js';
 import type { Translate } from './i18n.js';
 import pistonFloor from '../../../examples/etc-s-piston-floor.roomgraph.yaml?raw';
+import bumperArena from '../../../examples/etc-s-bumper-arena.roomgraph.yaml?raw';
 import catwalkGallery from '../../../examples/etc-m-catwalk-gallery.roomgraph.yaml?raw';
 import atrium from '../../../examples/etc-l-atrium.roomgraph.yaml?raw';
 
@@ -23,10 +26,21 @@ import atrium from '../../../examples/etc-l-atrium.roomgraph.yaml?raw';
  * 是错的模型。文档里若有多个房间，视为一个**房间库**，用房间选择器切换。
  */
 
-const LEVELS: { id: string; label: string; source: string }[] = [
-  { id: 'piston', label: 'S · Piston Floor', source: pistonFloor },
-  { id: 'catwalk', label: 'M · Catwalk Gallery', source: catwalkGallery },
-  { id: 'atrium', label: 'L · Atrium', source: atrium },
+/**
+ * `stem` = 关卡文件名去掉 `.roomgraph.yaml`。
+ * 只用于拼导出文件名，好让「导出 GLB」按钮的产物名与 `tjre export` 的默认名一致
+ * （`<stem>.<房间 id>.glb`）—— 两条路径落在同一个 out/ 目录，名字不一致会很混乱。
+ */
+export const LEVELS: { id: string; label: string; source: string; stem: string }[] = [
+  { id: 'piston', label: 'S · Piston Floor', source: pistonFloor, stem: 'etc-s-piston-floor' },
+  { id: 'bumper', label: 'S · Bumper Arena', source: bumperArena, stem: 'etc-s-bumper-arena' },
+  {
+    id: 'catwalk',
+    label: 'M · Catwalk Gallery',
+    source: catwalkGallery,
+    stem: 'etc-m-catwalk-gallery',
+  },
+  { id: 'atrium', label: 'L · Atrium', source: atrium, stem: 'etc-l-atrium' },
 ];
 
 interface Analysis {
@@ -57,6 +71,7 @@ export function App(): React.ReactElement {
   // 天花默认关：编辑器常态是从外部俯视，开着就什么内部都看不到
   const [showCeiling, setShowCeiling] = useState(false);
   const [showStructures, setShowStructures] = useState(true);
+  const [showProps, setShowProps] = useState(true);
   const [showLights, setShowLights] = useState(true);
   const [ssr, setSsr] = useState(true);
   const [firstPerson, setFirstPerson] = useState(false);
@@ -65,6 +80,10 @@ export function App(): React.ReactElement {
   const [rendererError, setRendererError] = useState<Error | null>(null);
   const [postFallback, setPostFallback] = useState<Error | null>(null);
   const [frames, setFrames] = useState(0);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<ExportOutcome | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const [revealError, setRevealError] = useState<string | null>(null);
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const analysis = useMemo(() => analyse(level?.source ?? ''), [level]);
@@ -85,6 +104,40 @@ export function App(): React.ReactElement {
   const theme = analysis.doc?.themes.find((t) => t.id === room?.theme);
   const errors = analysis.diagnostics.filter((d) => d.severity === 'error');
   const warnings = analysis.diagnostics.filter((d) => d.severity === 'warning');
+
+  // 换关卡 / 换房间后上次的导出结果就不再对应当前选择了，清掉 ——
+  // 留着会让人以为刚才导的是现在选中的这个房间
+  useEffect(() => {
+    setExported(null);
+    setExportError(null);
+    setRevealError(null);
+  }, [levelId, roomId]);
+
+  const doc = analysis.doc;
+  const stem = level?.stem ?? 'room';
+
+  async function handleExport(): Promise<void> {
+    if (doc === null || room === null) return;
+    setExporting(true);
+    setExportError(null);
+    setExported(null);
+    try {
+      setExported(await exportRoomGLB(doc, room, stem));
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleReveal(): Promise<void> {
+    setRevealError(null);
+    try {
+      await revealOutDir();
+    } catch (cause) {
+      setRevealError(cause instanceof Error ? cause.message : String(cause));
+    }
+  }
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
@@ -119,6 +172,7 @@ export function App(): React.ReactElement {
                 wireframe={wireframe}
                 showCeiling={showCeiling}
                 showStructures={showStructures}
+                showProps={showProps}
                 showLights={showLights}
                 ssr={ssr}
                 firstPerson={firstPerson}
@@ -204,6 +258,9 @@ export function App(): React.ReactElement {
           <Toggle checked={showStructures} onChange={setShowStructures}>
             {t('toggle.structures')}
           </Toggle>
+          <Toggle checked={showProps} onChange={setShowProps}>
+            {t('toggle.props')}
+          </Toggle>
           <Toggle checked={showLights} onChange={setShowLights}>
             {t('toggle.lights')}
           </Toggle>
@@ -236,6 +293,68 @@ export function App(): React.ReactElement {
 
         <Section title={t('section.room')}>
           <RoomRows room={room} stats={stats} backend={backend} frames={frames} t={t} />
+        </Section>
+
+        <Section title={t('section.export')}>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <Button
+              onClick={() => void handleExport()}
+              disabled={exporting || room === null}
+              primary
+            >
+              {exporting ? t('button.exporting') : t('button.exportGlb')}
+            </Button>
+            <Button onClick={() => void handleReveal()} disabled={false}>
+              {t('button.openOutDir')}
+            </Button>
+          </div>
+
+          {exported !== null && (
+            <div style={{ fontSize: 11, lineHeight: 1.7, marginBottom: 6 }}>
+              <div style={{ color: 'var(--ok, #6fbf73)' }}>
+                ✓ {exported.fileName} · {(exported.bytes / 1024).toFixed(0)} KB
+              </div>
+              {exported.path !== null && (
+                <div
+                  style={{
+                    color: 'var(--muted)',
+                    wordBreak: 'break-all',
+                    font: '11px/1.6 ui-monospace, Consolas, monospace',
+                  }}
+                >
+                  {exported.path}
+                </div>
+              )}
+              {exported.target === 'download' && (
+                <div style={{ color: 'var(--warn)' }}>{t('note.exportDownloaded')}</div>
+              )}
+              {exported.skippedAreaLights.length > 0 && (
+                <div style={{ color: 'var(--warn)' }}>
+                  {t('note.exportSkippedLights', {
+                    count: String(exported.skippedAreaLights.length),
+                    names: exported.skippedAreaLights.join(', '),
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {exportError !== null && (
+            <div style={{ color: 'var(--error)', fontSize: 11, lineHeight: 1.7, marginBottom: 6 }}>
+              {`${t('error.exportFailed')}\n${exportError}`}
+            </div>
+          )}
+          {revealError !== null && (
+            <div style={{ color: 'var(--error)', fontSize: 11, lineHeight: 1.7, marginBottom: 6 }}>
+              {`${t('error.revealFailed')}\n${revealError}`}
+            </div>
+          )}
+
+          <div style={{ color: 'var(--muted)', fontSize: 11, lineHeight: 1.7 }}>
+            {t('note.exportScope')}
+            <br />
+            {t('note.exportBoundary')}
+          </div>
         </Section>
 
         <Section title={`${t('section.diagnostics')}（${errors.length} / ${warnings.length}）`}>
@@ -317,7 +436,7 @@ function RoomRows({
       <Row k={t('row.portals')} v={`${roomPortals(room).length}  ${t('value.derived')}`} />
       {room.openings.length > 0 && <Row k={t('row.openings')} v={String(room.openings.length)} />}
       <Row k={t('row.structures')} v={String(room.structures.length)} />
-      <Row k={t('row.props')} v={String(room.props.length)} />
+      <Row k={t('row.props')} v={propsValue(room, stats, t)} />
       <Row
         k={t('row.lights')}
         v={
@@ -332,6 +451,19 @@ function RoomRows({
       {stats !== null && <Row k={t('row.meshes')} v={String(stats.meshes)} />}
     </>
   );
+}
+
+/**
+ * 道具那一行：`已建 / 文件里 · 用到几种 prefab`。
+ *
+ * 与灯光同构 —— 两者都可能"写了但没建出来"（开关关掉、或几何为空），
+ * 只显示文件里的条数会让人以为一定渲染了。
+ */
+function propsValue(room: Room, stats: ViewportStats | null, t: Translate): string {
+  if (stats === null) return String(room.props.length);
+  const kinds = new Set(room.props.map((p) => p.prefab)).size;
+  const suffix = kinds > 0 ? `  ·  ${kinds} ${t('unit.prefabs')}` : '';
+  return `${stats.props} / ${room.props.length}${suffix}`;
 }
 
 const selectStyle: React.CSSProperties = {
@@ -357,6 +489,38 @@ function Toggle({
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       {children}
     </label>
+  );
+}
+
+function Button({
+  onClick,
+  disabled,
+  primary = false,
+  children,
+}: {
+  onClick: () => void;
+  disabled: boolean;
+  primary?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        background: disabled ? '#20262d' : primary ? 'var(--accent)' : 'transparent',
+        color: disabled ? 'var(--muted)' : primary ? '#0d1117' : 'var(--text)',
+        border: '1px solid var(--border)',
+        borderRadius: 4,
+        padding: '6px 8px',
+        fontSize: 12,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

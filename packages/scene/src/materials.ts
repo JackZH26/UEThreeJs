@@ -73,6 +73,13 @@ export class MaterialLibrary {
       // 未知材质保持高粗糙度：哑光更像"未配置"，不会被误认为是有意的抛光面
       roughness: spec?.roughness ?? 0.85,
       metalness: spec?.metalness ?? 0.02,
+      // 自发光是可选的：只有彩灯 / 车灯 / 霓虹那几个材质会给。
+      // 缺省的 emissive 是黑色，等于不发光，所以这里不需要条件分支。
+      ...(spec?.emissive === undefined ? {} : { emissive: new Color(spec.emissive) }),
+      ...(spec?.emissiveIntensity === undefined
+        ? {}
+        : { emissiveIntensity: spec.emissiveIntensity }),
+      ...(spec?.flatShading === undefined ? {} : { flatShading: spec.flatShading }),
       // 墙体是有厚度的实体，但洞口内壁在某些视角下会看到背面，
       // DoubleSide 避免出现"洞口边缘漏空"的观感。
       // 这对 SSR 是安全的：DoubleSide 下 TSL 的 `normalView` 会乘 `faceDirection`，

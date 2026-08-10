@@ -6,7 +6,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parseDocument } from '@tjre/core';
 import { specOuterPlan } from '@tjre/schema';
 import type { RoomSpec } from '@tjre/schema';
-import { buildRoomFromDocument, exportGLB } from '@tjre/scene';
+import { buildRoomFromDocument, exportGLB, roomExportExtras } from '@tjre/scene';
 
 const examplesDir = resolve(import.meta.dirname, '../../../examples');
 
@@ -108,6 +108,45 @@ describe('GLB 容器', () => {
     expect(withExtras, `没有节点带上 roomId extras`).toBeDefined();
     expect(withExtras?.extras?.spec).toBe('M');
     expect(withExtras?.extras?.outerPlanMeters).toEqual({ w: 60, d: 30 });
+  });
+});
+
+/**
+ * `roomExportExtras` 是 CLI 与编辑器**共用**的 extras 构造器。
+ * 它存在的唯一理由就是让两条导出路径不会漂移 ——
+ * 所以这里钉住它的字段与派生值。
+ */
+describe('追溯信息（两条导出路径共用）', () => {
+  it('字段完整，且尺寸是从 spec 派生的', () => {
+    const { doc } = roomOf('L');
+    const room = doc.rooms[0];
+    if (room === undefined) throw new Error('示例里没有房间');
+    const extras = roomExportExtras({
+      schemaVersion: doc.schemaVersion,
+      sourceFile: 'etc-l-atrium.roomgraph.yaml',
+      room,
+    });
+    expect(extras.generator).toBe('ThreeJsRoomEditor');
+    expect(extras.roomId).toBe('atrium');
+    expect(extras.spec).toBe('L');
+    expect(extras.sourceFile).toBe('etc-l-atrium.roomgraph.yaml');
+    // 派生量必须与 spec 表一致，而不是从文档里读来的（文档里根本写不了）
+    expect(extras.outerPlanMeters).toEqual(specOuterPlan('L'));
+    expect(extras.interiorMeters).toEqual({ w: 58.5, d: 58.5, h: 24 });
+    // 坐标系约定必须写进产物，下游才知道不需要换算
+    expect(String(extras.note)).toContain('Y-up right-handed, metres');
+  });
+
+  it('同参数两次调用结果相同 —— 这是"两条路径逐字节相同"的前提', () => {
+    const { doc } = roomOf('S');
+    const room = doc.rooms[0];
+    if (room === undefined) throw new Error('示例里没有房间');
+    const args = {
+      schemaVersion: doc.schemaVersion,
+      sourceFile: 'etc-s-piston-floor.roomgraph.yaml',
+      room,
+    };
+    expect(JSON.stringify(roomExportExtras(args))).toBe(JSON.stringify(roomExportExtras(args)));
   });
 });
 

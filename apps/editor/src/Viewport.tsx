@@ -3,6 +3,7 @@ import {
   AgXToneMapping,
   Box3,
   DirectionalLight,
+  EquirectangularReflectionMapping,
   GridHelper,
   PMREMGenerator,
   PerspectiveCamera,
@@ -11,9 +12,11 @@ import {
   Vector3,
   WebGPURenderer,
 } from 'three/webgpu';
+import type { Texture } from 'three/webgpu';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { UltraHDRLoader } from 'three/addons/loaders/UltraHDRLoader.js';
 import { GRID_UNIT } from '@tjre/schema';
 import type { Room, Theme } from '@tjre/schema';
 import { buildRoom } from '@tjre/scene';
@@ -21,6 +24,9 @@ import type { BuildRoomResult } from '@tjre/scene';
 import { FirstPersonController } from './FirstPersonController.js';
 import { GRADING, createRenderPipeline } from './renderPipeline.js';
 import { installRectAreaLightSupport } from './rectAreaLightSupport.js';
+// 直接引用 submodule 里的 HDRI —— 它是**只读参考**资产，不复制一份进本仓库。
+// Vite 会把它打进 dist/assets（带 hash）。路径变了会在构建时报错，不会静默失效。
+import backdropUrl from '../../../three.js/examples/textures/equirectangular/royal_esplanade_2k.hdr.jpg';
 
 /**
  * 3D 视口。
@@ -61,6 +67,64 @@ const SUN_INTENSITY = 2.6;
 /** 主光方向（从房间指向光源），刻意偏斜以产生斜向长投影 */
 const SUN_DIRECTION = new Vector3(-0.55, 0.78, 0.42).normalize();
 
+/**
+ * ── 背景 ────────────────────────────────────────────────────
+ *
+ * 房间是全封闭外壳，但编辑器默认**关天花、从外部俯视**，所以画面里有很大一片
+ * 是房间之外 —— 那里原本是渲染器的默认清屏色（纯黑），整屏压抑。
+ *
+ * 做法与 three.js 的 `webgpu_loader_gltf_transmission` 示例一致：
+ * 一张 **equirect HDRI 全景**当 `scene.background`，配 `backgroundBlurriness`。
+ *
+ * 为什么是 equirect 而不是一张平面图：
+ *   equirect 是**天空盒** —— 转动轨道相机时背景跟着转，空间关系是连贯的。
+ *   平面图是屏幕空间贴的（`NodeManager.updateBackground()` 里
+ *   `background.isTexture` 那一支给的是 `texture(bg, screenUV.flipY())`），
+ *   怎么转视角它都不动，一眼就看出是贴上去的画。
+ *
+ * 为什么是 `scene.background` 而不是 CSS 层：
+ *   实测过 `alpha: true` + `setClearAlpha(0)` + CSS 背景 —— **不行**，
+ *   alpha 活不过后处理链（SSR → 时域重投影 → 降噪 → TRAA），
+ *   canvas 最终仍是不透明黑。把 alpha 一路铺进那条链的代价远大于收益。
+ *
+ * 虚化由 three 自己做：`backgroundBlurriness > 0` 时
+ * `NodeManager.updateBackground()` 会走 `pmremTexture(background)`，
+ * 用 PMREM 的 mip 链做**辐照度正确**的模糊 —— 比我们自己预先高斯模糊一张图
+ * 更对，也不用额外资产。
+ *
+ * ⚠️ 背景在场景 pass 里，所以**会被 AgX + 调色链处理**（不是 HDRI 原样）。
+ * 下面两个数是按截图目视收敛的，和光强一样属于经验值（见 CONVENTIONS §5.8）。
+ */
+
+/** 背景强度 —— 压到房间之下，让房间是主体而不是风景 */
+const BACKDROP_INTENSITY = 0.46;
+
+/** 背景模糊度（0..1，走 PMREM mip 链）。参考例子用 0.35 */
+const BACKDROP_BLURRINESS = 0.25;
+
+/**
+ * 全应用共享一份背景贴图。
+ *
+ * 视口 effect 会在每次切房间 / 拨开关时重建，如果把贴图放进 effect，
+ * 每次都要重新解码（UltraHDR 还要在 CPU 侧套一遍 gain map）并重传显存。
+ * 这是一张**静态资产**，随应用生命周期常驻，所以**刻意不 dispose** ——
+ * 不是漏掉了。
+ */
+let sharedBackdrop: Promise<Texture> | null = null;
+
+function loadBackdrop(): Promise<Texture> {
+  if (sharedBackdrop !== null) return sharedBackdrop;
+  // UltraHDR 是"JPEG + 增益图"，`UltraHDRLoader` 把两者合成出 HalfFloat 的
+  // HDR 贴图。用普通 TextureLoader 只会拿到 SDR 底图，高光全被削平。
+  sharedBackdrop = new UltraHDRLoader().loadAsync(backdropUrl).then((texture) => {
+    // 没这一行它就是张普通 2D 贴图（屏幕空间贴，不随相机转），
+    // 而且 `backgroundBlurriness` 也不会生效 —— PMREM 那条路只对 equirect / cube 走
+    texture.mapping = EquirectangularReflectionMapping;
+    return texture;
+  });
+  return sharedBackdrop;
+}
+
 export type ViewportStats = BuildRoomResult['stats'];
 
 export interface ViewportProps {
@@ -73,6 +137,8 @@ export interface ViewportProps {
   wireframe: boolean;
   showCeiling: boolean;
   showStructures: boolean;
+  /** 是否生成道具几何（`room.props`）—— 关掉能看清被道具挡住的地面布局 */
+  showProps: boolean;
   /** 是否实例化房间自带的灯光（`room.lights`） */
   showLights: boolean;
   /**
@@ -123,6 +189,7 @@ export function Viewport({
   wireframe,
   showCeiling,
   showStructures,
+  showProps,
   showLights,
   ssr,
   firstPerson,
@@ -173,6 +240,7 @@ export function Viewport({
       wireframe,
       showCeiling: showCeiling || firstPerson,
       showStructures,
+      showProps,
       showLights,
     });
     scene.add(built.root);
@@ -251,6 +319,7 @@ export function Viewport({
       if (w === 0 || h === 0) return;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      // 背景是天空盒，宽高比由相机投影自然处理 —— 不需要像平面图那样重算裁切
       // 必须让 setSize 同时更新 CSS 尺寸（默认行为）。传 updateStyle=false 时
       // canvas 的 CSS 尺寸会等于其像素尺寸，在 pixelRatio=2 下变成容器的两倍大，
       // 被父元素 overflow:hidden 裁掉大半，看起来就像"什么都没渲染"。
@@ -259,6 +328,17 @@ export function Viewport({
     resize();
     const observer = new ResizeObserver(resize);
     observer.observe(host);
+
+    // 第一人称是在**室内**（天花强制打开），背景永远被墙挡住 ——
+    // 挂上去不但白付一次绘制，还会白生成一份 PMREM，所以只在俯视模式下加载
+    if (!firstPerson) {
+      void loadBackdrop().then((texture) => {
+        if (cancelled) return;
+        scene.background = texture;
+        scene.backgroundIntensity = BACKDROP_INTENSITY;
+        scene.backgroundBlurriness = BACKDROP_BLURRINESS;
+      });
+    }
 
     // 用 Timer 而不是 Clock：Clock 在 r183 起已 deprecated，会每帧往控制台打
     // 警告 —— 而控制台是我们诊断黑屏的主要通道，不能让它被噪声淹没。
@@ -349,6 +429,9 @@ export function Viewport({
       pipeline?.dispose();
       scene.environment?.dispose();
       scene.environment = null;
+      // 只摘引用，**不 dispose** —— 背景贴图是全应用共享的静态资产，
+      // dispose 掉之后下一次重建（切房间 / 拨开关）就只剩黑屏了
+      scene.background = null;
       pmrem?.dispose();
       built.dispose();
       if (grid !== null) {
@@ -359,7 +442,17 @@ export function Viewport({
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [room, theme, wireframe, showCeiling, showStructures, showLights, ssr, firstPerson]);
+  }, [
+    room,
+    theme,
+    wireframe,
+    showCeiling,
+    showStructures,
+    showProps,
+    showLights,
+    ssr,
+    firstPerson,
+  ]);
 
   return <div ref={hostRef} style={{ position: 'absolute', inset: 0, overflow: 'hidden' }} />;
 }

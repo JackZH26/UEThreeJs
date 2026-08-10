@@ -33,4 +33,33 @@ describe('编辑器模块图', () => {
     expect(typeof mod.ErrorBoundary).toBe('function');
     expect(typeof mod.installGlobalErrorSurface).toBe('function');
   });
+
+  it('exportRoom 能被加载', async () => {
+    const mod = await import('../src/exportRoom.js');
+    expect(typeof mod.exportRoomGLB).toBe('function');
+    expect(typeof mod.revealOutDir).toBe('function');
+  });
+});
+
+/**
+ * `LEVELS[].stem` 是**手写**的文件名（去掉 `.roomgraph.yaml`），
+ * 用来拼导出文件名。它和 `?raw` 导入的路径没有编译期关联 ——
+ * 改了示例文件名只会让 stem 静默过期，导出的产物名就与 CLI 不一致了。
+ * 这条测试把那种漂移变成 CI 失败。
+ */
+describe('关卡表的 stem 与真实文件名一致', () => {
+  it('每个 stem 都对应一个存在的示例文件', async () => {
+    const { existsSync } = await import('node:fs');
+    const { resolve } = await import('node:path');
+    const { LEVELS } = await import('../src/App.js');
+    expect(LEVELS.length).toBeGreaterThan(0);
+    for (const level of LEVELS) {
+      const path = resolve(
+        import.meta.dirname,
+        '../../../examples',
+        `${level.stem}.roomgraph.yaml`,
+      );
+      expect(existsSync(path), `stem "${level.stem}" 指向的文件不存在：${path}`).toBe(true);
+    }
+  });
 });

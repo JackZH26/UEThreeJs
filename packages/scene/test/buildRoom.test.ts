@@ -24,10 +24,19 @@ function loadExample(name: string): RoomGraphDocument {
 
 function firstRoomOf(spec: RoomSpec) {
   const { file, roomId } = EXAMPLES[spec];
+  return roomFrom(file, roomId);
+}
+
+function roomFrom(file: string, roomId: string) {
   const doc = loadExample(file);
   const room = doc.rooms.find((r) => r.id === roomId);
   if (room === undefined) throw new Error(`${file} 里没有房间 ${roomId}`);
   return { doc, room, theme: doc.themes.find((t) => t.id === room.theme) };
+}
+
+/** 唯一带道具的示例 —— 三个 S/M/L 基准示例刻意保持"零道具"以隔离外壳断言 */
+function arenaRoom() {
+  return roomFrom('etc-s-bumper-arena.roomgraph.yaml', 'bumper_arena');
 }
 
 describe('外壳 mesh 数量', () => {
@@ -65,6 +74,74 @@ describe('外壳 mesh 数量', () => {
     expect(room.structures.length).toBeGreaterThan(0);
     const built = buildRoom(room, theme, { showStructures: false });
     expect(built.stats.structures).toBe(0);
+    built.dispose();
+  });
+});
+
+/**
+ * 道具在 v0.2 之前与 `room.lights` 一样是个**死字段**（YAML 里写了，几何一个不生成）。
+ * 这一组盯住"接上了"这件事本身。
+ */
+describe('道具', () => {
+  it('默认生成，数量与文档一致', () => {
+    const { room, theme } = arenaRoom();
+    expect(room.props.length, '示例应该有道具').toBeGreaterThan(0);
+    const built = buildRoom(room, theme);
+    expect(built.stats.props).toBe(room.props.length);
+    built.dispose();
+  });
+
+  it('showProps=false 时一个都不建，且 mesh 数明显下降', () => {
+    const { room, theme } = arenaRoom();
+    const on = buildRoom(room, theme);
+    const off = buildRoom(room, theme, { showProps: false });
+    expect(off.stats.props).toBe(0);
+    expect(off.stats.meshes).toBeLessThan(on.stats.meshes);
+    on.dispose();
+    off.dispose();
+  });
+
+  it('一个道具按材质拆成多个 mesh，且都带 propId', () => {
+    const { room, theme } = arenaRoom();
+    const built = buildRoom(room, theme, { showStructures: false });
+    const propMeshes = built.root.children.filter((c) => c.name.startsWith('prop:'));
+    // 碰碰车用 5 种材质，所以 mesh 数必然多于道具数
+    expect(propMeshes.length).toBeGreaterThan(built.stats.props);
+    for (const mesh of propMeshes) {
+      expect(typeof (mesh.userData as { propId?: unknown }).propId).toBe('string');
+      expect((mesh.userData as { kind?: unknown }).kind).toBe('prop');
+    }
+    built.dispose();
+  });
+
+  it('道具不可行走 —— Prop 是摆放物，不提供可行走表面', () => {
+    const { room, theme } = arenaRoom();
+    const built = buildRoom(room, theme);
+    expect(built.walkables.some((m) => m.name.startsWith('prop:'))).toBe(false);
+    built.dispose();
+  });
+
+  it('自发光道具（彩灯 / 车灯 / 霓虹）不投影，其余道具投影', () => {
+    const { room, theme } = arenaRoom();
+    const built = buildRoom(room, theme, { showStructures: false });
+    const byName = (needle: string) =>
+      built.root.children.find((c) => c.name.includes(needle)) as
+        { castShadow: boolean } | undefined;
+    expect(byName('prop:fest_n1:neon_')?.castShadow).toBe(false);
+    expect(byName('prop:car_pink:car_paint_pink')?.castShadow).toBe(true);
+    built.dispose();
+  });
+
+  it('道具不会捅出外壳', () => {
+    const { room, theme } = arenaRoom();
+    const built = buildRoom(room, theme, { showCeiling: true });
+    const box = new Box3().setFromObject(built.root);
+    const outer = specOuterPlan('S');
+    expect(box.min.x).toBeGreaterThanOrEqual(-outer.w / 2 - 1e-3);
+    expect(box.max.x).toBeLessThanOrEqual(outer.w / 2 + 1e-3);
+    expect(box.min.z).toBeGreaterThanOrEqual(-outer.d / 2 - 1e-3);
+    expect(box.max.z).toBeLessThanOrEqual(outer.d / 2 + 1e-3);
+    expect(box.max.y).toBeLessThanOrEqual(roomSize(room).h + WALL_T + 1e-3);
     built.dispose();
   });
 });

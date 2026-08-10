@@ -3,6 +3,7 @@ import {
   GRID_UNIT,
   WALL_T,
   isPortal,
+  prefabDef,
   roomFootprint,
   roomOuterPlan,
   roomPortals,
@@ -44,7 +45,11 @@ export function runDescribe(file: string, json: boolean): ExitCode {
       portals: roomPortals(room).length,
       windows: room.openings.filter((o) => !isPortal(o.type)).length,
       structures: countBy(room.structures.map((s) => s.type)),
-      props: room.props.length,
+      // 按 prefab 分类而不是只给条数：agent 需要知道这个房间摆了些什么。
+      // 文本输出只打种类（`props` 展开会有几百字符，与"压缩摘要"的用途相悖），
+      // 完整的 prefab 清单留在 --json 里。
+      props: countBy(room.props.map((p) => p.prefab)),
+      propKinds: countBy(room.props.map((p) => prefabDef(p.prefab).kind)),
       lights: room.lights.length,
       markers: countBy(room.markers.map((m) => m.kind)),
     };
@@ -87,6 +92,10 @@ export function runDescribe(file: string, json: boolean): ExitCode {
       .map(([k, v]) => `${k}×${v}`)
       .join(' ');
     if (structureText !== '') console.log(`    结构：${structureText}`);
+    const propText = Object.entries(room.propKinds)
+      .map(([k, v]) => `${k}×${v}`)
+      .join(' ');
+    if (propText !== '') console.log(`    道具：${propText}（prefab 明细见 --json）`);
     const markerText = Object.entries(room.markers)
       .map(([k, v]) => `${k}×${v}`)
       .join(' ');

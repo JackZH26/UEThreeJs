@@ -12,6 +12,7 @@
 
 export * from './primitives.js';
 export * from './spec.js';
+export * from './prefab.js';
 export * from './opening.js';
 export * from './structure.js';
 export * from './content.js';

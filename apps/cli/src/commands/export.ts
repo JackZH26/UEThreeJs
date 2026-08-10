@@ -71,12 +71,17 @@ export async function runExport(options: ExportOptions): Promise<ExitCode> {
   }
 
   // 懒加载：`@tjre/scene` 会拉进 three.js，而 validate / describe 不该为此付代价
-  const { buildRoom, exportGLB } = await import('@tjre/scene');
+  const { buildRoom, exportGLB, roomExportExtras } = await import('@tjre/scene');
 
   const built = buildRoom(
     room,
     doc.themes.find((t) => t.id === room.theme),
-    { showCeiling: options.ceiling, showStructures: true, showLights: options.includeLights },
+    {
+      showCeiling: options.ceiling,
+      showStructures: true,
+      showProps: true,
+      showLights: options.includeLights,
+    },
   );
 
   try {
@@ -84,16 +89,13 @@ export async function runExport(options: ExportOptions): Promise<ExitCode> {
     const outer = roomOuterPlan(room);
     const { glb, skippedAreaLights } = await exportGLB(built.root, {
       includeLights: options.includeLights,
-      extras: {
-        generator: 'ThreeJsRoomEditor',
+      // extras 的拼装住在 @tjre/scene（唯一来源）—— 编辑器的导出按钮调同一个
+      // 函数，两条路径的产物才能逐字节相同（packages/scene 有比对测试）
+      extras: roomExportExtras({
         schemaVersion: doc.schemaVersion,
         sourceFile: basename(options.file),
-        roomId: room.id,
-        spec: room.spec,
-        outerPlanMeters: outer,
-        interiorMeters: size,
-        note: 'Y-up right-handed, metres. UE glTF importer handles the Z-up/left-handed conversion.',
-      },
+        room,
+      }),
     });
 
     const outPath = resolve(

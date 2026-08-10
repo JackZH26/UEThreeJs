@@ -1,3 +1,6 @@
+import { PROP_COLORS } from '@tjre/schema';
+import type { PropColor } from '@tjre/schema';
+
 /**
  * ============================================================
  *  材质调色板 —— ENTER THE CUBE 的冷灰工业方向
@@ -33,6 +36,76 @@ export interface SurfaceSpec {
   roughness: number;
   /** 0 = 绝缘体，1 = 金属 */
   metalness: number;
+  /**
+   * 自发光色。彩灯泡、车灯、霓虹轮眉靠它在暗场里发亮。
+   *
+   * ⚠️ 自发光**不照亮**别的东西（three 里 emissive 只影响自身像素），
+   * 房间的实际照明仍然来自 `room.lights`。但它会进颜色缓冲，
+   * 于是能被 SSR 反射到地面上 —— 那正是参考照片里湿亮地板的观感来源。
+   */
+  emissive?: number;
+  emissiveIntensity?: number;
+  /** 平面着色（低多边形镜面球靠它出刻面感） */
+  flatShading?: boolean;
+}
+
+/**
+ * 道具配色的**色值**表。
+ *
+ * 颜色**名**是 schema 的受控词表（`PROP_COLORS`，prefab 目录用它），
+ * 色值只在这里 —— 名字属于数据模型，色值属于渲染，两边各归其位。
+ * 这些是饱和的游乐场颜色，与房间的冷灰工业调**故意**唱反调：
+ * 碰碰车就该是场馆里唯一鲜艳的东西。
+ */
+const PROP_COLOR_HEX: Readonly<Record<PropColor, number>> = Object.freeze({
+  pink: 0xff5fa2,
+  red: 0xe03a2f,
+  orange: 0xff8a34,
+  yellow: 0xf7c62e,
+  lime: 0xa8e04a,
+  mint: 0x47d9b2,
+  cyan: 0x38c8ff,
+  blue: 0x2f6fe0,
+  purple: 0x8b5cf6,
+  white: 0xeef2f6,
+});
+
+/**
+ * 材质 id 的拼装规则 —— 构造器与调色板**共用这三个函数**。
+ * 两边各自拼字符串的话，改一处就会静默回落成哈希色。
+ */
+export function carPaintMaterial(color: PropColor): string {
+  return `car_paint_${color}`;
+}
+export function plasticMaterial(color: PropColor): string {
+  return `plastic_${color}`;
+}
+export function neonMaterial(color: PropColor): string {
+  return `neon_${color}`;
+}
+
+/** 三个配色族：车漆（半金属高光）/ 塑料（乐高哑光）/ 霓虹（自发光） */
+function propColorMaterials(): Record<string, Readonly<SurfaceSpec>> {
+  const out: Record<string, Readonly<SurfaceSpec>> = {};
+  for (const color of PROP_COLORS) {
+    const hex = PROP_COLOR_HEX[color];
+    // 车漆：金属度中等 + 粗糙度很低 = 糖果漆，SSR 下能把彩灯与地面都映出来
+    out[carPaintMaterial(color)] = Object.freeze({
+      color: hex,
+      roughness: 0.16,
+      metalness: 0.35,
+    });
+    // 乐高塑料：ABS 是哑光的，给高光反而不像玩具
+    out[plasticMaterial(color)] = Object.freeze({ color: hex, roughness: 0.42, metalness: 0.02 });
+    out[neonMaterial(color)] = Object.freeze({
+      color: hex,
+      roughness: 0.35,
+      metalness: 0,
+      emissive: hex,
+      emissiveIntensity: 2.2,
+    });
+  }
+  return out;
 }
 
 /**
@@ -40,6 +113,7 @@ export interface SurfaceSpec {
  *
  * 色相刻意压在偏蓝的低饱和灰里（混凝土在冷光下的实感），
  * 靠灯光的暖色去制造冷暖对比，而不是把材质本身调暖。
+ * 道具材质是例外：游乐场馆的彩车与彩灯必须是饱和色，见 `PROP_COLOR_HEX`。
  */
 export const PALETTE: Readonly<Record<string, Readonly<SurfaceSpec>>> = Object.freeze({
   // ── 地面 ──────────────────────────────────────────────
@@ -63,6 +137,53 @@ export const PALETTE: Readonly<Record<string, Readonly<SurfaceSpec>>> = Object.f
   // 金属度高 + 粗糙度低 = 明确的镜面反射，让廊桥/楼梯从混凝土里跳出来
   steel_grate: Object.freeze({ color: 0x5a6068, roughness: 0.3, metalness: 0.85 }),
   steel_grate_dark: Object.freeze({ color: 0x474d54, roughness: 0.34, metalness: 0.82 }),
+
+  // ── 游乐场馆（碰碰车场）───────────────────────────────
+  // 抛光环氧地坪：**全场最低**的粗糙度。碰碰车场的看点就是彩车与彩灯映在地上，
+  // 这块地面是整个房间的反射承载面，比抛光混凝土还要再光一档。
+  arena_floor_gloss: Object.freeze({ color: 0x232831, roughness: 0.1, metalness: 0.06 }),
+  // 深色墙面：把彩灯的颜色衬出来。墙一旦发亮，霓虹就没有对比度了
+  arena_wall_dark: Object.freeze({ color: 0x2f333c, roughness: 0.36, metalness: 0.04 }),
+
+  // ── 道具的固定材质（与配色无关的那些）─────────────────
+  rubber_black: Object.freeze({ color: 0x1b1d21, roughness: 0.72, metalness: 0.02 }),
+  chrome: Object.freeze({ color: 0xb9c2cc, roughness: 0.12, metalness: 1 }),
+  // 镜面球：金属度拉满 + 平面着色 → 每个刻面各自反射，SSR 的最佳展示体
+  mirror_facet: Object.freeze({
+    color: 0xd8dee6,
+    roughness: 0.08,
+    metalness: 1,
+    flatShading: true,
+  }),
+  // 经典乐高黄（头与手恒用它，不随衣裤配色变）
+  minifig_skin: Object.freeze({ color: 0xf2cd2f, roughness: 0.34, metalness: 0.02 }),
+  // 假人壳体：碰撞测试假人那种哑光米灰。**故意不给它配色**——
+  // 假人是道具而不是角色，一旦鲜艳就会跟车抢主体
+  mannequin_shell: Object.freeze({ color: 0xb9b3a8, roughness: 0.52, metalness: 0.02 }),
+  // 卡通车的虹膜：深海蓝 + 很低的粗糙度。眼睛是这套造型的全部重点，
+  // 必须比车漆还亮一档才能在暗场里读出眼神
+  toon_iris: Object.freeze({ color: 0x1d4e8c, roughness: 0.08, metalness: 0.1 }),
+  // 观众长椅的板材
+  plastic_slate: Object.freeze({ color: 0x545c66, roughness: 0.44, metalness: 0.04 }),
+
+  // ── 自动贩卖机 ────────────────────────────────────────
+  // 机身：喷粉白灰钢板。**全场唯一的浅色实体** —— 它就是靠这一点在暗场里
+  // 当路标兼掩体，所以刻意比墙面亮一大截
+  vending_shell: Object.freeze({ color: 0xd7dae0, roughness: 0.34, metalness: 0.18 }),
+  // 货窗玻璃：本项目没有透明材质（外壳全是 DoubleSide 不透明），
+  // 所以用**很深 + 很光**来演玻璃 —— SSR 会在上面映出场地，观感就成立了
+  vending_glass: Object.freeze({ color: 0x14171c, roughness: 0.05, metalness: 0.25 }),
+  // 柜内照明与小屏：比霓虹弱得多（neon_* 是 2.2），否则整台机器糊成一片白
+  vending_glow: Object.freeze({
+    color: 0xf2f6ff,
+    roughness: 0.4,
+    metalness: 0,
+    emissive: 0xdfe9ff,
+    emissiveIntensity: 0.85,
+  }),
+
+  // ── 道具配色族（按 PROP_COLORS 循环生成，见下）────────
+  ...propColorMaterials(),
 });
 
 /** 查表；未命中返回 `undefined`，由调用方回落到哈希占位色 */

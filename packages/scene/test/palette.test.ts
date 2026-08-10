@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseDocument } from '@tjre/core';
-import { MaterialLibrary, PALETTE, paletteIds, surfaceSpec } from '@tjre/scene';
+import { MaterialLibrary, PALETTE, paletteIds, prefabMaterialIds, surfaceSpec } from '@tjre/scene';
 import { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL } from '../src/portal.js';
 
 const examplesDir = resolve(import.meta.dirname, '../../../examples');
+
+/**
+ * 读目录而不是写死文件名：新增示例会**自动**纳入下面的覆盖检查。
+ * 写死清单的话，加了关卡却忘了改测试 = 漏配的材质悄悄溜过去。
+ */
+function exampleFiles(): string[] {
+  return readdirSync(examplesDir).filter((name) => name.endsWith('.roomgraph.yaml'));
+}
 
 describe('命名调色板', () => {
   it('已知 id 拿到命名参数', () => {
@@ -42,11 +50,8 @@ describe('命名调色板', () => {
    * 而杂色在灰调场景里其实挺显眼但容易被当成"就是这个设计"。
    */
   it('示例关卡用到的每个材质 id 都在表里', () => {
-    const files = [
-      'etc-s-piston-floor.roomgraph.yaml',
-      'etc-m-catwalk-gallery.roomgraph.yaml',
-      'etc-l-atrium.roomgraph.yaml',
-    ];
+    const files = exampleFiles();
+    expect(files.length, '一个示例都没找到，路径大概错了').toBeGreaterThan(0);
     const missing: string[] = [];
     for (const file of files) {
       const loaded = parseDocument(readFileSync(resolve(examplesDir, file), 'utf8'), file);
@@ -62,9 +67,26 @@ describe('命名调色板', () => {
             missing.push(`${file}: ${s.material}`);
           }
         }
+        // 道具的材质不写在 YAML 里，是构造器**代码**决定的 —— 得问出来
+        for (const prop of room.props) {
+          for (const id of prefabMaterialIds(prop.prefab)) {
+            if (surfaceSpec(id) === undefined) missing.push(`${file}: ${prop.prefab} → ${id}`);
+          }
+        }
       }
     }
     expect(missing, `未配色的材质 id：\n${missing.join('\n')}`).toEqual([]);
+  });
+
+  it('自发光材质的参数合法（彩灯 / 车灯靠它在暗场里发亮）', () => {
+    const emissive = paletteIds().filter((id) => PALETTE[id]?.emissive !== undefined);
+    expect(emissive.length, '调色板里应当有自发光材质').toBeGreaterThan(0);
+    for (const id of emissive) {
+      const spec = PALETTE[id];
+      expect(spec?.emissive, id).toBeGreaterThanOrEqual(0);
+      expect(spec?.emissive, id).toBeLessThanOrEqual(0xffffff);
+      expect(spec?.emissiveIntensity ?? 1, id).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -80,6 +102,18 @@ describe('MaterialLibrary 的两级回落', () => {
     expect(material.metalness).toBe(spec.metalness);
     // 颜色经 sRGB → 线性工作空间转换，所以比对 hex 要转回来
     expect(material.color.getHex()).toBe(spec.color);
+    lib.dispose();
+  });
+
+  it('自发光与平面着色被传给了材质实例', () => {
+    const lib = new MaterialLibrary();
+    const bulb = lib.get('neon_pink');
+    expect(bulb.emissive.getHex()).toBe(PALETTE['neon_pink']?.emissive);
+    expect(bulb.emissiveIntensity).toBeGreaterThan(1);
+    expect(lib.get('mirror_facet').flatShading).toBe(true);
+    // 没声明的材质不该被顺手打开这些开关
+    expect(lib.get('concrete_wall_panel').flatShading).toBe(false);
+    expect(lib.get('concrete_wall_panel').emissive.getHex()).toBe(0x000000);
     lib.dispose();
   });
 

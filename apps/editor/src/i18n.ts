@@ -35,9 +35,11 @@ const MESSAGES = {
 
     'section.display': '显示',
     'section.room': '房间',
+    'section.export': '导出',
     'section.diagnostics': '诊断',
 
     'toggle.structures': '内部结构件（夹层 / 楼梯 / 廊桥）',
+    'toggle.props': '道具（碰碰车 / 乐高人 / 彩灯）',
     'toggle.lights': '房间灯光（关卡自带布光）',
     'toggle.ssr': '屏幕空间反射 + 时域抗锯齿',
     'toggle.ceiling': '天花（挡住内部，默认关）',
@@ -61,10 +63,15 @@ const MESSAGES = {
     'row.markers': '标记',
 
     'unit.cells': '格',
+    'unit.prefabs': '种',
     'unit.shadowCasters': '盏投影',
     'value.derived': '（派生）',
     'value.framesStalled': '0（循环未启动！）',
     'value.none': '无',
+
+    'button.exportGlb': '导出 GLB',
+    'button.exporting': '导出中…',
+    'button.openOutDir': '打开 out 目录',
 
     'hint.orbit': '鼠标左键旋转 · 滚轮缩放 · 右键平移',
     'hint.fpsLine1': '点击画面锁定鼠标 · WASD 移动 · Shift 加速',
@@ -72,11 +79,20 @@ const MESSAGES = {
 
     'error.validationFailed': '关卡在 {stage} 阶段校验失败，无法渲染。见右侧诊断。',
     'error.rendererInit': '✗ 渲染器初始化失败',
+    'error.exportFailed': '✗ 导出失败',
+    'error.revealFailed': '✗ 打开目录失败（此功能只在 pnpm dev 下可用）',
 
     'note.singleRoom':
       '每个房间是独立关卡，房间之间由**传送门**在运行时连接 —— 因此这里只显示当前房间。',
     'note.diagnosticsLang': '诊断信息目前仅有中文（由校验器产生，见 i18n.ts 说明）。',
     'note.postFallback': '⚠ 后处理管线构建失败，已回落到直接渲染（无反射）。房间仍可正常编辑。',
+    'note.exportScope':
+      '导出恒为完整外壳（天花 / 结构件 / 灯光全开），不受上面的显示开关影响 —— 产物与 `tjre export` 一致。',
+    'note.exportDownloaded': '⚠ dev server 的写入端点不可用，已回落成浏览器下载（去下载目录找）。',
+    'note.exportSkippedLights':
+      '⚠ 跳过 {count} 个面光源（glTF 的 KHR_lights_punctual 不支持）：{names}。导入 UE 后需手工补 RectLight。',
+    'note.exportBoundary':
+      '⚠ 这是核对几何与比例的通道，不是最终 UE 资产（UV 不可平铺、楼梯无斜坡碰撞代理）。',
   },
   en: {
     'app.title': 'ThreeJsRoomEditor',
@@ -88,9 +104,11 @@ const MESSAGES = {
 
     'section.display': 'Display',
     'section.room': 'Room',
+    'section.export': 'Export',
     'section.diagnostics': 'Diagnostics',
 
     'toggle.structures': 'Interior structures (mezzanine / stairs / catwalk)',
+    'toggle.props': 'Props (bumper cars / minifigs / festoon lights)',
     'toggle.lights': 'Room lights (the level’s own lighting)',
     'toggle.ssr': 'Screen-space reflections + temporal AA',
     'toggle.ceiling': 'Ceiling (hides the interior, off by default)',
@@ -114,10 +132,15 @@ const MESSAGES = {
     'row.markers': 'Markers',
 
     'unit.cells': 'cells',
+    'unit.prefabs': 'prefabs',
     'unit.shadowCasters': 'casting shadows',
     'value.derived': '(derived)',
     'value.framesStalled': '0 (loop never started!)',
     'value.none': 'none',
+
+    'button.exportGlb': 'Export GLB',
+    'button.exporting': 'Exporting…',
+    'button.openOutDir': 'Open out folder',
 
     'hint.orbit': 'LMB orbit · wheel zoom · RMB pan',
     'hint.fpsLine1': 'Click to lock pointer · WASD to move · Shift to sprint',
@@ -126,6 +149,8 @@ const MESSAGES = {
     'error.validationFailed':
       'Level failed validation at the {stage} stage; nothing to render. See diagnostics on the right.',
     'error.rendererInit': '✗ Renderer failed to initialise',
+    'error.exportFailed': '✗ Export failed',
+    'error.revealFailed': '✗ Could not open the folder (only works under `pnpm dev`)',
 
     'note.singleRoom':
       'Each room is a standalone level; rooms are linked by **portals** at runtime — so only the current room is shown here.',
@@ -133,6 +158,14 @@ const MESSAGES = {
       'Diagnostics are currently Chinese-only (produced by the validator; see i18n.ts).',
     'note.postFallback':
       '⚠ Post-processing pipeline failed to build; fell back to direct rendering (no reflections). The room is still fully editable.',
+    'note.exportScope':
+      'Export always writes the complete shell (ceiling / structures / lights all on) regardless of the display toggles above — byte-for-byte what `tjre export` produces.',
+    'note.exportDownloaded':
+      '⚠ The dev-server write endpoint is unavailable; fell back to a browser download (check your Downloads folder).',
+    'note.exportSkippedLights':
+      '⚠ Skipped {count} area light(s) — glTF’s KHR_lights_punctual has no area type: {names}. Add a RectLight by hand after importing into UE.',
+    'note.exportBoundary':
+      '⚠ This is a channel for checking geometry and proportions, not a final UE asset (UVs are not tileable; stairs have no ramp collision proxy).',
   },
 } as const;
 

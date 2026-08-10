@@ -3,8 +3,17 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    // three.js 是 submodule（只读参考），生成物与产物不参与 lint
-    ignores: ['three.js/**', '**/dist/**', 'docs/generated/**', 'coverage/**'],
+    // three.js 是 submodule（只读参考），生成物与产物不参与 lint。
+    // `.probe/` 是运行期探针的临时目录（dev server 日志、截图、一次性脚本），
+    // `out/` 是导出产物 —— 两者都在 .gitignore 里，不是仓库资产。
+    ignores: [
+      'three.js/**',
+      '**/dist/**',
+      'docs/generated/**',
+      'coverage/**',
+      '.probe/**',
+      'out/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

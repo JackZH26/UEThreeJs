@@ -74,10 +74,15 @@
   - 冷灰工业调色板（`palette.ts`），粗糙度从 0.85 降到 0.2~0.45 落进 SSR 有效区间
   - 后处理可开关；构建失败回落直接渲染并上报，不黑屏
 - ✅ `room.lights` 真正落地（此前是死字段）+ 平台护栏在楼梯接入处自动断开
+- ✅ **背景不再是纯黑**：`scene.background` 挂 equirect HDRI 天空盒
+  （Royal Esplanade，直接引 submodule 里的 `royal_esplanade_2k.hdr.jpg`，
+  经 `UltraHDRLoader`），虚化交给 `backgroundBlurriness` 的 PMREM mip 链。
+  与 three.js 的 `webgpu_loader_gltf_transmission` 示例同一做法，
+  但模糊度按俯视相机重新收敛（0.35 → 0.25）；第一人称（室内）不加载
 - ✅ `pnpm probe:editor` —— 用 CDP 真开浏览器逐关卡自检渲染状态与控制台
 - ⬜ three-mesh-bvh 拾取加速（当前单房间复杂度下暂不需要）
 - ⬜ 校验诊断的双语化（需把规则改成产出「消息 key + 参数」而非成品中文句子）
-- ⬜ 光照强度的正式标定（现在是目视收敛的经验值，见 CONVENTIONS §5.6）
+- ⬜ 光照强度的正式标定（现在是目视收敛的经验值，见 CONVENTIONS §5.8）
 
 **验收**
 S / M / L 三个示例关卡 `--strict` 零诊断 → 浏览器正确渲染 → 能走进去并爬楼梯上到夹层；
@@ -124,13 +129,31 @@ Claude Code / Codex 在无人干预下，按自然语言需求改出正确关卡
 **产出**
 
 - 主题库 3–5 套（仓库混凝土 / 金属 / 办公 …）
-- 道具库 20–30 个 + 结构件预设
+- ✅ **道具库第一批（30 个 prefab）** —— 随 `etc-s-bumper-arena` 一起落地
+  - 碰碰车写实款 ×7 色 / **碰碰车卡通款 ×5 色** / 乐高人（坐姿 + 站姿）×6 色 /
+    吊顶彩灯串 ×3 / 镜面球 / 观众长椅 / 自动贩卖机（当掩体用，配 kind=cover 的 marker）
+  - 卡通款是皮克斯《赛车总动员》的语言（大眼睛 + 笑嘴 + 圆润糖果漆），
+    与写实款共用同一圈橡胶围裙；**假人与尾旗内建**，所以它刻意**没有** `mount`
+  - **目录（纯数据）在 `packages/schema/src/prefab.ts`，几何构造器在
+    `packages/scene/src/prefabs/`** —— 目录要能被 headless 校验，所以不能跟 three 走
+  - `Prop.prefab` 收成**闭合枚举**：写错的 id 在 schema 层就被拒，JSON Schema
+    里带 enum 供 agent 发现；因此**没有**新增校验规则
+  - 目录声明的 `size` 由测试断言等于实际几何包围盒；`mount` 让"人坐进车里"
+    在 YAML 里只需同一个 (x,z) + 同一个 rotationY
+  - 调色板加了自发光 / 平面着色（彩灯泡、霓虹轮眉、镜面球刻面）
+- ⬜ 道具库补到 20–30 个**通用**件（箱、桶、管、招牌…）+ 结构件预设
 - 灯光预设（含物理单位标注）
 - ✅ **GLB 导出**（`pnpm cli export`，`packages/scene/src/gltf.ts`）
   - glTF 与 three.js 同为 Y-up 右手系、单位米 → 不做坐标换算
   - 灯光走 `KHR_lights_punctual`；面光源不被规范支持，**明确报出**不静默丢
   - 有往返测试：用 three 自己的 `GLTFLoader` 读回，包围盒与 mesh 数必须一致
   - 导出无副作用（临时摘掉的灯会放回）+ 同输入逐字节确定
+- ✅ **编辑器里的导出按钮**（+「打开 out 目录」）
+  - 浏览器侧重建完整外壳后导出，产物与 CLI **逐字节相同**
+    （extras 由 `roomExportExtras()` 唯一提供，两条路径共用）
+  - 写盘与打开目录靠 dev-only 的 Vite 插件（`apps/editor/vite-plugin-export.ts`）：
+    浏览器做不到这两件事；`apply: 'serve'`，构建产物里不存在这两个端点
+  - 桥不可用时（`vite preview` / 静态托管）回落成浏览器下载并在面板上说明
 
 **验收**
 导出的 glTF 在第三方查看器中正确显示（几何 + 材质参数 + 层级）。
