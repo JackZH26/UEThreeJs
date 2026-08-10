@@ -12,7 +12,7 @@
  * 这项检查放在 CI 里，是因为一旦 submodule 被换成 npm 依赖、
  * 或 alias 写错指向 src/ 与 build/ 混用，问题会非常难查。
  */
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -101,6 +101,48 @@ if (!failed) {
   } else {
     fail(`两个入口 REVISION 不同：${String(webgl.REVISION)} vs ${String(webgpu.REVISION)}`);
   }
+}
+
+// ── 4. 打包产物的单实例检查（存在 dist 时才跑）─────────
+// Node 侧的模块解析与 Vite 的打包是两套逻辑，Node 通过不代表打包也通过。
+// 这一段直接在真实产物里数「只存在于 three.core.js 的字符串」出现几次。
+const distDir = resolve(root, 'apps/editor/dist/assets');
+if (existsSync(distDir)) {
+  const CORE_ONLY_MARKER = 'THREE.BufferAttribute: array should be a Typed Array.';
+  const bundles = readdirSync(distDir).filter((f) => f.endsWith('.js'));
+
+  const countIn = (file: string): number =>
+    readFileSync(file, 'utf8').split(CORE_ONLY_MARKER).length - 1;
+
+  // 先自检标记本身仍然唯一 —— three.js 升级后字符串可能变化
+  const inCore = countIn(resolve(buildDir, 'three.core.js'));
+  const inWebgpu = countIn(resolve(buildDir, 'three.webgpu.js'));
+  const inModule = countIn(resolve(buildDir, 'three.module.js'));
+
+  if (inCore !== 1 || inWebgpu !== 0 || inModule !== 0) {
+    fail(
+      `单实例检查用的标记字符串已失效（core=${inCore} webgpu=${inWebgpu} module=${inModule}）`,
+      '三个数应为 1/0/0。three.js 升级后该字符串可能改动，请在 scripts/verify-three.ts 里换一个只存在于 three.core.js 的字符串。',
+    );
+  } else {
+    const total = bundles.reduce((sum, f) => sum + countIn(resolve(distDir, f)), 0);
+    if (total === 1) {
+      pass('打包产物单实例：three.core.js 只被打包一份');
+    } else if (total === 0) {
+      fail(
+        '打包产物里找不到 three.core.js 的痕迹',
+        '可能 dist 已过期。重新跑 `pnpm --filter @tjre/editor build` 后再检查。',
+      );
+    } else {
+      fail(
+        `打包产物里 three.core.js 出现 ${total} 份（应为 1）`,
+        'Vite alias 让两个 three 入口解析到了不同的 core。检查 three.alias.ts —— ' +
+          '不要把一个入口指向 build/ 另一个指向 src/。',
+      );
+    }
+  }
+} else {
+  console.log('  · 跳过打包产物检查（apps/editor/dist 不存在，先跑一次编辑器构建）');
 }
 
 console.log(failed ? '\n✗ three.js 接线检查未通过\n' : '\n✓ three.js 接线检查通过\n');

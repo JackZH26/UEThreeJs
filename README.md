@@ -35,6 +35,9 @@ pnpm cli validate examples/loft-warehouse.roomgraph.yaml --strict
 pnpm cli solve examples/loft-warehouse.roomgraph.yaml --map
 pnpm verify:three
 pnpm check
+
+# 3D 视口（http://localhost:5173）
+pnpm dev
 ```
 
 ## 关卡长什么样

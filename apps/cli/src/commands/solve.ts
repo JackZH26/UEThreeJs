@@ -1,4 +1,5 @@
-import { loadDocumentFile, solveLayout, validateDocument, formatDiagnostics } from '@tjre/core';
+import { solveLayout, validateDocument, formatDiagnostics } from '@tjre/core';
+import { loadDocumentFile } from '@tjre/core/node';
 import type { LayoutBounds, RoomPlacement } from '@tjre/core';
 import { ExitCode } from '../exit.js';
 

@@ -6,16 +6,19 @@ AI agent 请读 [`../AGENTS.md`](../AGENTS.md)（本文件是人类开发规范�
 
 ## 1. 技术栈（已锁定）
 
-| 层       | 选择                               | 锁定理由                                                  |
-| -------- | ---------------------------------- | --------------------------------------------------------- |
-| 语言     | TypeScript **5.9.3**（精确锁）     | `typescript-eslint@8` peer 要求 `<6.1.0`，TS 7 尚不受支持 |
-| 3D       | three.js **r185**（git submodule） | 见 §2                                                     |
-| Schema   | **Zod 4**                          | 单一来源产出 TS 类型 + 运行时校验 + JSON Schema           |
-| 文本格式 | YAML                               | 注释友好、diff 友好、LLM 友好                             |
-| 测试     | Vitest                             |                                                           |
-| 包管理   | pnpm workspace                     |                                                           |
+| 层       | 选择                                 | 锁定理由                                                       |
+| -------- | ------------------------------------ | -------------------------------------------------------------- |
+| 语言     | TypeScript **5.9.3**（精确锁）       | `typescript-eslint@8` peer 要求 `<6.1.0`，TS 7 尚不受支持      |
+| 3D       | three.js **r185**（git submodule）   | 见 §2                                                          |
+| Schema   | **Zod 4**                            | 单一来源产出 TS 类型 + 运行时校验 + JSON Schema                |
+| 文本格式 | YAML                                 | 注释友好、diff 友好、LLM 友好                                  |
+| 测试     | Vitest                               |                                                                |
+| 包管理   | pnpm workspace                       |                                                                |
+| 构建     | Vite 8                               |                                                                |
+| UI       | React 19                             | LLM 训练数据最多 → AI 改 UI 成功率最高                         |
+| 3D 类型  | `@types/three` **0.185.4**（精确锁） | three.js 官方不发 .d.ts；**版本必须与 submodule 的 r185 对应** |
 
-后续引入（对应 Phase）：Vite + React + Tailwind（Phase 1–2）、Playwright（Phase 3）。
+后续引入（对应 Phase）：Tailwind（Phase 2，有真实 UI 时再上）、Playwright（Phase 3）。
 
 ## 2. three.js 依赖策略
 
@@ -43,20 +46,33 @@ AI agent 请读 [`../AGENTS.md`](../AGENTS.md)（本文件是人类开发规范�
 
 ```
 packages/schema/   Zod schema + TS 类型 + JSON Schema 生成
-packages/core/     文档 IO、校验器、命令层
+packages/core/     文档 IO、校验器、布局求解器、命令层
+packages/scene/    RoomGraph + Layout → three.js 场景（唯一允许 import three 的库包）
 apps/cli/          headless CLI（AI agent 与 CI 的主接口）
+apps/editor/       浏览器编辑器（Vite + React）
 scripts/           构建期检查
+three.alias.ts     three.js 模块解析映射（vitest 与 vite 共用的唯一来源）
 examples/          示例关卡（同时是 CI 回归夹具）
 three.js/          submodule，只读
 ```
 
-**依赖方向严格单向：`schema ← core ← (scene) ← editor`**
+**依赖方向严格单向：`schema ← core ← scene ← editor`**
 
 `packages/core` 与 `packages/schema` **禁止 import three.js**，保证能在
 CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强制。
 
-后续包按 Phase 加入：`packages/scene`（Phase 1）、`packages/presets`（Phase 4）、
-`packages/exporters`（Phase 4–5）、`apps/editor`（Phase 1）。**不预建空包。**
+后续包按 Phase 加入：`packages/presets`（Phase 4）、`packages/exporters`（Phase 4–5）。
+**不预建空包。**
+
+### 3.1 `@tjre/core` 的双入口
+
+| 入口              | 内容                                    | 可用环境      |
+| ----------------- | --------------------------------------- | ------------- |
+| `@tjre/core`      | 解析、校验、求解、命令层 —— **纯逻辑**  | 浏览器 + Node |
+| `@tjre/core/node` | `loadDocumentFile` / `saveDocumentFile` | **仅** Node   |
+
+**主入口顶层不得 import `node:*`。** 否则 Vite 打包编辑器时会报错或塞进
+一堆 polyfill。文件 IO 一律放在 `src/node.ts`。
 
 ## 4. 代码规范
 
@@ -174,6 +190,26 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 
 **solver 的 golden 测试刻意不用 snapshot**：坐标是手算可核对的，
 写成显式期望值等于把几何约定文档化；snapshot 会在改坏时被无声地更新掉。
+
+### 5.1 几何测试可以 headless 跑
+
+构造 `BufferGeometry` 不需要 WebGL 上下文，所以墙面开洞、地板对齐这类几何
+正确性都能在 Node 里**机器验证**，不必靠肉眼看 3D。`packages/scene/test/` 就是这么做的。
+
+⚠️ **断言精度上限是 5 位小数**。three.js 的 `BufferAttribute` 用 `Float32Array`
+存顶点，只有约 7 位十进制有效数字 —— `0.1` 存进去再读出来是 `0.10000000149011612`。
+断言 9 位必然失败，且失败原因与几何正确性无关。
+
+### 5.2 three.js 单实例要验两层
+
+`pnpm verify:three` 检查两个不同层面，**两者都必须过**：
+
+1. **Node 侧模块解析** —— 两个 three 入口是否共享同一份 `three.core.js`
+2. **Vite 打包产物** —— 在真实 bundle 里数「只存在于 three.core.js 的字符串」
+   出现几次（应为 1）
+
+Node 通过不代表打包通过，两套解析逻辑不同。CI 会先构建编辑器再跑这个检查。
+产物检查依赖一个标记字符串，three.js 升级后可能失效 —— 脚本自带自检并会明确报出。
 
 ## 6. Git 规范
 

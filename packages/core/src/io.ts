@@ -1,4 +1,3 @@
-import { readFileSync, writeFileSync } from 'node:fs';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { z } from 'zod';
 import { RoomGraphDocument, SUPPORTED_SCHEMA_VERSIONS } from '@tjre/schema';
@@ -93,26 +92,6 @@ export function parseDocument(text: string, sourceLabel = '<input>'): LoadResult
   return { ok: true, doc: parsed.data };
 }
 
-export function loadDocumentFile(path: string): LoadResult {
-  let text: string;
-  try {
-    text = readFileSync(path, 'utf8');
-  } catch (cause) {
-    return {
-      ok: false,
-      errors: [
-        {
-          rule: 'IO',
-          severity: 'error',
-          path,
-          message: `读取文件失败：${cause instanceof Error ? cause.message : String(cause)}`,
-        },
-      ],
-    };
-  }
-  return parseDocument(text, path);
-}
-
 /**
  * 序列化为 YAML。
  *
@@ -128,8 +107,4 @@ export function serializeDocument(doc: RoomGraphDocument): string {
     sortMapEntries: false,
     nullStr: 'null',
   });
-}
-
-export function saveDocumentFile(path: string, doc: RoomGraphDocument): void {
-  writeFileSync(path, serializeDocument(doc), 'utf8');
 }

@@ -21,11 +21,14 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "types": ["node"],
+    "jsx": "react-jsx",
 
     "baseUrl": ".",
     "paths": {
       "@tjre/schema": ["./packages/schema/src/index.ts"],
-      "@tjre/core": ["./packages/core/src/index.ts"]
+      "@tjre/core": ["./packages/core/src/index.ts"],
+      "@tjre/core/node": ["./packages/core/src/node.ts"],
+      "@tjre/scene": ["./packages/scene/src/index.ts"]
     }
   },
   "include": [
@@ -33,7 +36,8 @@
     "apps/**/*.ts",
     "apps/**/*.tsx",
     "scripts/**/*.ts",
-    "*.config.ts"
+    "*.config.ts",
+    "three.alias.ts"
   ],
   "exclude": ["node_modules", "three.js", "**/dist"]
 }

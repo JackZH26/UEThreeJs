@@ -163,10 +163,23 @@ pnpm verify:three   # three.js submodule 接线检查
 
 **Phase 0 已完成**：schema v0.1、校验器（28 条规则）、CLI、CI。
 
-**Phase 1 进行中**：布局求解器已完成 —— `solve` 命令可用，含 R07x 冲突诊断
-（R070 房间重叠 / R071 环路或 pin 矛盾 / R072 无法定位 / R073 非法 pin 旋转）。
+**Phase 1 进行中**，已完成：
+
+- **布局求解器** —— `solve` 命令可用，含 R07x 冲突诊断
+  （R070 房间重叠 / R071 环路或 pin 矛盾 / R072 无法定位 / R073 非法 pin 旋转）
+- **`packages/scene`** —— 房间外壳几何（带洞口的四面墙 + 地板 + 天花）
+- **`apps/editor`** —— 只读 3D 视口（`pnpm dev` 启动，WebGPU 自动回退 WebGL2）
 
 **尚不存在**（不要假设它们可用）：
-3D 视口、编辑器 UI、命令实现、预设库（主题/道具）、导出器、UE 管线。
+内部结构件的几何渲染（夹层/楼梯/廊桥目前**只在 schema 与校验里存在，3D 里看不到**）、
+第一人称漫游、编辑操作、命令实现、file watcher 热重载、预设库、导出器、UE 管线。
+
+### 改代码时要知道的两条边界
+
+1. **`@tjre/core` 有双入口**：主入口是纯逻辑（浏览器可用），
+   文件 IO 在 `@tjre/core/node`。**不要往主入口加 `node:*` import** ——
+   会让编辑器打包失败。
+2. **只有 `packages/scene` 能 import three**。`core` 与 `schema` 必须零 three 依赖
+   （eslint 会拦），否则 CLI 和 CI 就跑不起来了。
 
 路线图见 `docs/ROADMAP.md`。

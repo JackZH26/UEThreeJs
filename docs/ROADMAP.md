@@ -50,6 +50,17 @@
   - golden 测试写死示例关卡的求解坐标（手算可核对）
 - ✅ `tjre solve` CLI，含 `--map` ASCII 俯视图
 - ✅ `tjre validate` 并入 layout 层，三层逐层放行
+- ✅ `packages/scene` —— RoomGraph + Layout → three.js 场景
+  - 带洞口的四面墙（`Shape` + `holes` + Earcut）、地板、天花
+  - 每面墙只长出半个墙厚，相邻两房各出一半拼成完整墙 → 无 z-fighting
+  - 墙面几何直接生成在房间局部坐标系，避免 `offset` 方向被镜像（有回归测试）
+  - 占位材质：按材质 id 哈希出**稳定**颜色，便于肉眼区分与比对
+- ✅ `apps/editor` —— Vite + React 骨架 + 只读 3D 视口（WebGPURenderer 自动回退 WebGL2）
+- ✅ `three.alias.ts` 单一来源；`verify:three` 增加**打包产物**单实例检查
+- ✅ `@tjre/core` 拆双入口（纯逻辑 / `./node` 文件 IO），使 core 可在浏览器复用
+- ⬜ 内部结构件几何（夹层 / 楼梯 / 廊桥 / 柱梁 / 隔墙）
+- ⬜ 第一人称漫游
+- ⬜ three-mesh-bvh 拾取加速
 - `packages/scene/` — RoomGraph → three.js 场景
   - 外壳几何（带洞口的墙面）、结构件几何生成（平台/楼梯/廊桥/柱梁/隔墙）
   - 主题材质占位

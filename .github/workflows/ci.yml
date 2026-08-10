@@ -29,7 +29,12 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # three.js 接线：REVISION 一致性 + 单实例（multiple instances of three.js 是经典坑）
+      # 先构建编辑器，让 verify:three 能顺带检查**打包产物**里的 three 单实例。
+      # Node 侧解析通过不代表 Vite 打包也通过，两套逻辑都要验。
+      - name: 构建编辑器
+        run: pnpm --filter @tjre/editor build
+
+      # three.js 接线：REVISION 一致性 + Node 侧单实例 + 产物单实例
       - name: three.js submodule 接线检查
         run: pnpm verify:three
 

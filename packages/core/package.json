@@ -5,7 +5,8 @@
   "type": "module",
   "description": "文档 IO、校验器、命令层 —— 零 three.js 依赖，可在 CLI / CI / AI agent 中 headless 运行",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "dependencies": {
     "@tjre/schema": "workspace:*",

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ThreeJsRoomEditor</title>
+    <style>
+      :root {
+        --bg: #14171a;
+        --panel: #1c2126;
+        --border: #2b3238;
+        --text: #d8dee4;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --error: #f85149;
+        --warn: #d29922;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body,
+      #root {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font:
+          13px/1.5 ui-sans-serif,
+          system-ui,
+          'Segoe UI',
+          sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

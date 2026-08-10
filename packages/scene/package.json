@@ -1,0 +1,17 @@
+{
+  "name": "@tjre/scene",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RoomGraph + Layout → three.js 场景。唯一允许 import three 的库包。",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tjre/core": "workspace:*",
+    "@tjre/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/three": "0.185.4"
+  }
+}

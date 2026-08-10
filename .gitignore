@@ -16,3 +16,6 @@ Thumbs.db
 docs/generated/
 test-results/
 playwright-report/
+
+# 编辑器构建产物
+apps/editor/dist/

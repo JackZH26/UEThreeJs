@@ -1,4 +1,4 @@
-import { loadDocumentFile } from '@tjre/core';
+import { loadDocumentFile } from '@tjre/core/node';
 import { isDoor, parseOpeningRef } from '@tjre/schema';
 import { ExitCode } from '../exit.js';
 

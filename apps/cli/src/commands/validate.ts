@@ -1,4 +1,5 @@
-import { formatDiagnostics, loadDocumentFile, solveLayout, validateDocument } from '@tjre/core';
+import { formatDiagnostics, solveLayout, validateDocument } from '@tjre/core';
+import { loadDocumentFile } from '@tjre/core/node';
 import type { Diagnostic } from '@tjre/core';
 import { ExitCode } from '../exit.js';
 
