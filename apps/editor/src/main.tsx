@@ -15,3 +15,12 @@ createRoot(host).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// 通知 index.html 里的启动看门狗：模块图跑通了、React 已挂载。
+// 不设这个标志，看门狗会在 3 秒后误报启动超时。
+declare global {
+  interface Window {
+    __tjreBooted?: boolean;
+  }
+}
+window.__tjreBooted = true;

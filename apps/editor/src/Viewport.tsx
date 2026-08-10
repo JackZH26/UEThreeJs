@@ -42,6 +42,13 @@ export interface ViewportProps {
   onError?: (error: Error) => void;
   /** 后端就绪后上报实际使用的是 WebGPU 还是 WebGL2 回退 */
   onBackend?: (name: string) => void;
+  /**
+   * 已渲染帧数（约 2Hz 上报）。
+   *
+   * 这是最有用的一条诊断：如果它一直是 0，说明动画循环从未启动
+   * （init 失败 / 异常被吞）；如果在增长而画面仍空，问题就在相机或几何。
+   */
+  onFrames?: (count: number) => void;
 }
 
 /**
@@ -71,11 +78,12 @@ export function Viewport({
   onStats,
   onError,
   onBackend,
+  onFrames,
 }: ViewportProps): React.ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
   // 用 ref 持有回调，避免它们进 effect 依赖导致整个场景重建
-  const callbacks = useRef({ onStats, onError, onBackend });
-  callbacks.current = { onStats, onError, onBackend };
+  const callbacks = useRef({ onStats, onError, onBackend, onFrames });
+  callbacks.current = { onStats, onError, onBackend, onFrames };
 
   useEffect(() => {
     const host = hostRef.current;
@@ -172,6 +180,8 @@ export function Viewport({
     observer.observe(host);
 
     const clock = new Clock();
+    let frames = 0;
+    let lastReport = 0;
 
     void (async () => {
       try {
@@ -190,6 +200,14 @@ export function Viewport({
           orbit?.update();
           fps?.update(dt);
           renderer.render(scene, camera);
+
+          frames++;
+          // 每帧 setState 会把 React 拖死，约 2Hz 上报一次就够诊断
+          const elapsed = clock.getElapsedTime();
+          if (elapsed - lastReport > 0.5) {
+            lastReport = elapsed;
+            callbacks.current.onFrames?.(frames);
+          }
         });
       } catch (cause) {
         if (cancelled) return;

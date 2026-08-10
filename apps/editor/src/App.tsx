@@ -68,6 +68,8 @@ export function App(): React.ReactElement {
   const [stats, setStats] = useState<ViewportStats | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<Error | null>(null);
+  // 帧计数心跳：0 = 渲染循环从未跑起来；持续增长 = 循环正常，问题在相机或几何
+  const [frames, setFrames] = useState(0);
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const analysis = useMemo(() => analyse(level?.source ?? ''), [level]);
@@ -85,21 +87,35 @@ export function App(): React.ReactElement {
           </div>
         ) : (
           <ErrorBoundary label="3D 视口">
-            {rendererError !== null && (
-              <div style={{ padding: 24, color: 'var(--error)', whiteSpace: 'pre-wrap' }}>
-                {`✗ 渲染器初始化失败\n\n${rendererError.message}\n\n${rendererError.stack ?? ''}`}
+            {/* 出错时**不要**同时渲染 Viewport：它的 host div 是 position:absolute
+                inset:0，会把错误信息整块盖住，等于错误白写了一遍。 */}
+            {rendererError !== null ? (
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  overflow: 'auto',
+                  padding: 24,
+                  color: 'var(--error)',
+                  whiteSpace: 'pre-wrap',
+                  font: '12px/1.6 ui-monospace, Consolas, monospace',
+                }}
+              >
+                {`✗ 渲染器初始化失败\n\n${rendererError.name}: ${rendererError.message}\n\n${rendererError.stack ?? ''}`}
               </div>
+            ) : (
+              <Viewport
+                doc={analysis.doc}
+                wireframe={wireframe}
+                showCeiling={showCeiling}
+                showStructures={showStructures}
+                firstPerson={firstPerson}
+                onStats={setStats}
+                onBackend={setBackend}
+                onError={setRendererError}
+                onFrames={setFrames}
+              />
             )}
-            <Viewport
-              doc={analysis.doc}
-              wireframe={wireframe}
-              showCeiling={showCeiling}
-              showStructures={showStructures}
-              firstPerson={firstPerson}
-              onStats={setStats}
-              onBackend={setBackend}
-              onError={setRendererError}
-            />
           </ErrorBoundary>
         )}
       </main>
@@ -147,6 +163,7 @@ export function App(): React.ReactElement {
           <Row k="房间" v={String(analysis.roomCount)} />
           <Row k="范围" v={analysis.bounds} />
           {backend !== null && <Row k="渲染后端" v={backend} />}
+          <Row k="已渲染帧" v={frames === 0 ? '0（循环未启动！）' : String(frames)} />
           {stats !== null && (
             <>
               <Row k="已渲染房间" v={String(stats.rooms)} />

@@ -36,7 +36,103 @@
       canvas {
         display: block;
       }
+      #boot-error {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        overflow: auto;
+        padding: 24px;
+        background: #20141a;
+        color: #ffb4a8;
+        font: 12px/1.6 ui-monospace, Consolas, monospace;
+        white-space: pre-wrap;
+      }
     </style>
+
+    <!--
+      启动期错误捕获 —— 必须是**内联的经典 script**，不能放在模块里。
+
+      原因：如果失败的正是应用自己的 ES 模块图（链接错误、404、模块顶层抛错），
+      那么写在模块里的错误处理器根本没机会被执行，页面就只剩一片背景色，
+      连一条线索都没有。这一段在任何模块加载之前就跑完，所以能兜住这类失败。
+
+      三层兜底：
+        1. window error（capture=true）—— capture 阶段才能收到**资源加载失败**
+           （<script>/模块 404、MIME 错误），冒泡阶段收不到
+        2. unhandledrejection
+        3. 看门狗 —— 有些模块解析失败只写 console、不触发任何 error 事件，
+           靠"3 秒内 React 没挂载"这个信号才能发现
+    -->
+    <script>
+      (function () {
+        var seen = Object.create(null);
+        var panel = null;
+
+        function ensurePanel() {
+          if (panel === null) {
+            panel = document.createElement('pre');
+            panel.id = 'boot-error';
+            (document.body || document.documentElement).appendChild(panel);
+          }
+          return panel;
+        }
+
+        function paint(title, detail) {
+          var key = title + '|' + detail;
+          if (seen[key]) {
+            seen[key]++;
+            return;
+          }
+          seen[key] = 1;
+          var el = ensurePanel();
+          el.textContent += (el.textContent ? '\n\n────────────────\n\n' : '') + title + '\n\n' + detail;
+        }
+
+        window.addEventListener(
+          'error',
+          function (event) {
+            // 资源加载失败：event.target 是失败的元素，没有 message
+            var target = event.target;
+            if (target && target !== window && (target.src || target.href)) {
+              paint(
+                '✗ 资源加载失败（模块 404 / MIME 错误）',
+                String(target.src || target.href) +
+                  '\n\n这通常是 import 路径写错、或 Vite alias 没命中。\n打开 F12 → Network 看该请求的状态码。',
+              );
+              return;
+            }
+            paint(
+              '✗ 未捕获错误',
+              event.error && event.error.stack
+                ? event.error.stack
+                : event.message + '\n  at ' + event.filename + ':' + event.lineno + ':' + event.colno,
+            );
+          },
+          true, // capture：必须为 true 才能收到资源加载失败
+        );
+
+        window.addEventListener('unhandledrejection', function (event) {
+          var r = event.reason;
+          paint('✗ 未处理的 Promise 拒绝', r && r.stack ? r.stack : String(r));
+        });
+
+        // 看门狗：模块解析失败有时只写 console、不触发 error 事件
+        window.__tjreBooted = false;
+        setTimeout(function () {
+          if (window.__tjreBooted) return;
+          paint(
+            '✗ 启动超时：3 秒内 React 未挂载',
+            '模块图很可能在链接阶段就失败了，且没有触发 error 事件。\n' +
+              '\n请按 F12 打开控制台，把**第一条红色报错**发过来 —— 常见形态：\n' +
+              '  · "does not provide an export named ..."  → 某个 import 的符号不存在\n' +
+              '  · "Failed to fetch dynamically imported module"  → 路径/alias 问题\n' +
+              '  · "Cannot access ... before initialization"  → 模块循环依赖\n' +
+              '\n当前 URL: ' +
+              location.href,
+          );
+        }, 3000);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
