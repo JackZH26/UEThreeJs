@@ -305,3 +305,85 @@ describe('诊断质量（规范要求：每条诊断必须可操作）', () => {
     expect(lastError).toBeLessThan(firstWarning);
   });
 });
+
+describe('R046 楼梯落点（与几何生成共用同一套算法）', () => {
+  /** 造一个 20×16×10 的高房间，塞进夹层 + 一部楼梯 */
+  function withStair(
+    stair: Partial<{
+      from: { x: number; z: number };
+      facing: 'north' | 'south' | 'east' | 'west';
+      stepHeight: number;
+    }> = {},
+    platformRect = { x: 0, z: -5, w: 20, d: 6 },
+  ) {
+    return makeDoc((d) => {
+      d.rooms[0]!.size = { w: 20, d: 16, h: 10 };
+      d.rooms[0]!.structures = [
+        { id: 'mezz', type: 'platform', rect: platformRect, elevation: 4 },
+        {
+          id: 'st',
+          type: 'stair',
+          from: stair.from ?? { x: -7, z: 1 },
+          to: 'mezz',
+          facing: stair.facing ?? 'north',
+          stepHeight: stair.stepHeight ?? 0.18,
+        },
+      ];
+    });
+  }
+
+  it('楼梯顶端落在平台上时不报', () => {
+    // rise 4m / stepHeight 0.18 → 23 级 × 0.27 踏面 = 6.21m
+    // 从 z=1 向北(-Z) → 顶端 z = -5.21，落在平台 z ∈ [-8, -2] 内
+    const warnings = validateDocument(withStair()).warnings.filter((w) => w.rule === 'R046');
+    expect(warnings).toEqual([]);
+  });
+
+  it('楼梯朝向反了 → 顶端通向半空，报 R046', () => {
+    // 朝南(+Z) → 顶端 z = 1 + 6.21 = 7.21，远离平台
+    const diag = expectRule(validateDocument(withStair({ facing: 'south' })).warnings, 'R046');
+    expect(diag.message).toContain('7.21');
+    expect(diag.hint).toContain('Blondel');
+  });
+
+  it('起点太远 → 顶端越过平台，报 R046', () => {
+    // 从 z=-14 向北 → 顶端 z = -20.21，越过平台远端
+    const diag = expectRule(
+      validateDocument(withStair({ from: { x: 0, z: -14 } })).warnings,
+      'R046',
+    );
+    expect(diag.severity).toBe('warning');
+  });
+
+  it('踢面变高使进深变短，落点随之改变（证明用的是同一套推导）', () => {
+    // stepHeight 0.3 → 踏面被夹到 0.22，级数 ceil(4/0.3)=14 → 进深 3.08m
+    // 从 z=1 向北 → 顶端 z = -2.08，仍在平台 [-8,-2] 内（边界附近）
+    const ok = validateDocument(withStair({ stepHeight: 0.3 })).warnings.filter(
+      (w) => w.rule === 'R046',
+    );
+    expect(ok).toEqual([]);
+  });
+
+  it('爬梯用更宽的容差（贴边往上爬是正常的）', () => {
+    const doc = makeDoc((d) => {
+      d.rooms[0]!.size = { w: 20, d: 16, h: 10 };
+      d.rooms[0]!.structures = [
+        { id: 'mezz', type: 'platform', rect: { x: 0, z: -5, w: 20, d: 6 }, elevation: 4 },
+        // 平台南边界在 z=-2，梯脚在 z=-1.4（外侧 0.6m）应被容忍
+        { id: 'ld', type: 'ladder', at: { x: 0, z: -1.4 }, to: 'mezz', facing: 'north' },
+      ];
+    });
+    expect(validateDocument(doc).warnings.filter((w) => w.rule === 'R046')).toEqual([]);
+  });
+
+  it('爬梯离平台太远仍会报', () => {
+    const doc = makeDoc((d) => {
+      d.rooms[0]!.size = { w: 20, d: 16, h: 10 };
+      d.rooms[0]!.structures = [
+        { id: 'mezz', type: 'platform', rect: { x: 0, z: -5, w: 20, d: 6 }, elevation: 4 },
+        { id: 'ld', type: 'ladder', at: { x: 0, z: 6 }, to: 'mezz', facing: 'north' },
+      ];
+    });
+    expectRule(validateDocument(doc).warnings, 'R046');
+  });
+});

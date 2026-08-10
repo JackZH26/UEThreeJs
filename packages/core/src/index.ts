@@ -7,6 +7,7 @@
 
 export * from './diagnostics.js';
 export * from './lookup.js';
+export * from './geometry.js';
 export * from './validate.js';
 export * from './io.js';
 export * from './command.js';

@@ -1,5 +1,6 @@
 import type { PointXZ, Room, Structure } from '@tjre/schema';
-import { isElevatedSurface, isPassable } from '@tjre/schema';
+import { isClimbTarget, isElevatedSurface, isPassable } from '@tjre/schema';
+import { advance, pointInRect, rampLength, stairMetrics } from '../geometry.js';
 import type { Rule, Reporter } from '../diagnostics.js';
 import { roomHalfExtents } from '../lookup.js';
 
@@ -174,6 +175,85 @@ export const R044_elevatedDoorUnreachable: Rule = {
   },
 };
 
+/**
+ * 楼梯 / 斜坡 / 爬梯的顶端是否真的落在目标平台上。
+ *
+ * 这是"作者只写起点 + 朝向"这个设计的必然代价：进深由 Blondel 公式推导，
+ * 作者算不出来，所以很容易写出一部**通向半空**的楼梯 —— 几何照样生成，
+ * 但玩家上不去。
+ *
+ * 用的是 `@tjre/core/geometry` 里与几何生成**完全相同**的算法。
+ * 若两边各算一遍，会出现"校验通过但几何错位"，那是最难查的一类 bug。
+ *
+ * 定为 warning 而非 error：容差是启发式的，宁可漏报也不要误拦。
+ */
+const LANDING_TOLERANCE = 0.5;
+/** 爬梯是贴着平台边往上爬、再跨上去的，起点本来就在平台之外 */
+const LADDER_TOLERANCE = 0.8;
+
+export const R046_climbLandingOffTarget: Rule = {
+  id: 'R046',
+  title: '楼梯 / 斜坡 / 爬梯的顶端未落在目标平台上',
+  check(doc, report) {
+    doc.rooms.forEach((room, ri) => {
+      const byId = new Map(room.structures.map((s) => [s.id, s]));
+
+      room.structures.forEach((structure, si) => {
+        if (
+          structure.type !== 'stair' &&
+          structure.type !== 'ramp' &&
+          structure.type !== 'ladder'
+        ) {
+          return;
+        }
+        const target = byId.get(structure.to);
+        if (target === undefined || !isClimbTarget(target)) return; // R013 负责
+        const rise = target.elevation - structure.fromElevation;
+        if (rise <= 0) return; // R013 负责
+
+        let top: PointXZ;
+        let tolerance: number;
+        if (structure.type === 'ladder') {
+          top = structure.at;
+          tolerance = LADDER_TOLERANCE;
+        } else {
+          const run =
+            structure.type === 'stair'
+              ? stairMetrics(rise, structure.stepHeight).runLength
+              : rampLength(rise);
+          top = advance(structure.from, structure.facing, run);
+          tolerance = LANDING_TOLERANCE;
+        }
+
+        if (pointInRect(top, target.rect, tolerance)) return;
+
+        const runText =
+          structure.type === 'ladder'
+            ? ''
+            : `（进深 ${(structure.type === 'stair'
+                ? stairMetrics(rise, structure.stepHeight).runLength
+                : rampLength(rise)
+              ).toFixed(2)}m）`;
+
+        report({
+          severity: 'warning',
+          path: `rooms[${ri}].structures[${si}]`,
+          message:
+            `${structure.type} "${structure.id}" 的顶端${runText}落在 ` +
+            `(${top.x.toFixed(2)}, ${top.z.toFixed(2)})，不在目标平台 "${target.id}" ` +
+            `的范围内（x ${(target.rect.x - target.rect.w / 2).toFixed(2)}~${(target.rect.x + target.rect.w / 2).toFixed(2)}, ` +
+            `z ${(target.rect.z - target.rect.d / 2).toFixed(2)}~${(target.rect.z + target.rect.d / 2).toFixed(2)}）。`,
+          hint:
+            structure.type === 'ladder'
+              ? `把 at 移到平台边缘附近。`
+              : `进深由踢面高度按 Blondel 公式推导（无法直接指定）。` +
+                `请调整 from 的位置、换一个 facing，或加大平台的 rect 让它覆盖顶端。`,
+        });
+      });
+    });
+  },
+};
+
 /** 房间尺寸的合理性提示 —— 针对"高仓库 / loft"这一目标形态 */
 export const R045_roomProportions: Rule = {
   id: 'R045',
@@ -199,6 +279,7 @@ export const structureRules: readonly Rule[] = [
   R043_platformUnderClearance,
   R044_elevatedDoorUnreachable,
   R045_roomProportions,
+  R046_climbLandingOffTarget,
 ];
 
 // 显式导出以便测试单独调用

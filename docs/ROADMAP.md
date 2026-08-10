@@ -22,7 +22,7 @@
 - pnpm workspace + TS strict + eslint + prettier + vitest
 - three.js 作为 **shallow submodule 锁定 `r185`**（commit `2431a09f`）
 - `packages/schema` — RoomGraph schema v0.1（Zod 4），含内部结构件 9 类
-- `packages/core` — 文档 IO（YAML，确定性序列化）、**28 条校验规则**、命令层契约
+- `packages/core` — 文档 IO（YAML，确定性序列化）、**29 条校验规则**、命令层契约
 - `apps/cli` — `validate` / `describe` / `schema`，含 `--json` 与退出码契约
 - `scripts/verify-three.ts` — submodule 接线 + **单实例**检查
 - `examples/` — `two-rooms`（最小）、`loft-warehouse`（目标形态：10m 高主厅 + 夹层 + 楼梯 + 夹层门）
@@ -64,8 +64,10 @@
   - buildScene 导出 walkables 列表，供第一人称地面检测
 - ✅ 天花默认关闭（编辑器要能看进房间内部），可开关
 - ✅ 第一人称漫游：PointerLock + 向下射线地面跟随 + 台阶容差（楼梯自然可走）
+- ✅ R046 校验：楼梯 / 斜坡 / 爬梯顶端是否真的落在目标平台上
+  - Blondel 等纯几何推导已下移到 `packages/core/src/geometry.ts`，
+    校验器与几何生成**共用同一套算法**（两边各算一遍必然漂移）
 - ⬜ three-mesh-bvh 拾取加速（房间数少时暂不需要）
-- ⬜ R046 校验：楼梯顶端是否真的落在目标平台上
 - `packages/scene/` — RoomGraph → three.js 场景
   - 外壳几何（带洞口的墙面）、结构件几何生成（平台/楼梯/廊桥/柱梁/隔墙）
   - 主题材质占位

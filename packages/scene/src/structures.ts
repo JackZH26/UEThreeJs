@@ -1,7 +1,11 @@
-import { BoxGeometry, CylinderGeometry, MathUtils } from 'three';
+import { BoxGeometry, CylinderGeometry } from 'three';
 import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PointXZ, Room, Structure, WallSide } from '@tjre/schema';
+import { DIRECTION, rampLength, stairMetrics } from '@tjre/core';
+
+// 与校验器 R046 共用同一套推导，避免两边各算一遍而漂移
+export { rampLength, stairMetrics } from '@tjre/core';
 
 /**
  * ============================================================
@@ -16,14 +20,6 @@ import type { PointXZ, Room, Structure, WallSide } from '@tjre/schema';
  *  是 1 个 mesh 而不是 20 个，draw call 差一个数量级。
  */
 
-/** 各朝向在房间局部平面上的单位向量 */
-const DIR: Readonly<Record<WallSide, PointXZ>> = {
-  north: { x: 0, z: -1 },
-  south: { x: 0, z: 1 },
-  east: { x: 1, z: 0 },
-  west: { x: -1, z: 0 },
-};
-
 /** 护栏高度（m），扶手顶面 */
 const RAILING_HEIGHT = 1.1;
 /** 护栏立柱截面边长与间距 */
@@ -32,38 +28,8 @@ const POST_SPACING = 1.2;
 /** 扶手横杆截面 */
 const RAIL_THICKNESS = 0.08;
 
-/**
- * 斜坡坡度 1:8（12.5%）。
- * schema 未指定坡度，按车辆通行的常见值取；无障碍通行通常用 1:12。
- */
-const RAMP_SLOPE = 1 / 8;
-
 /** 爬梯横档间距 */
 const RUNG_SPACING = 0.3;
-
-/**
- * 由踢面高度导出踏面深度 —— Blondel 公式 `2R + G = 630mm`。
- *
- * schema 只给了 `stepHeight`（踢面），没有踏面深度。与其拍一个魔法数字，
- * 不如用建筑学上通行的舒适度公式导出，并夹到合理区间。
- */
-function treadDepth(stepHeight: number): number {
-  return MathUtils.clamp(0.63 - 2 * stepHeight, 0.22, 0.34);
-}
-
-/** 楼梯 / 斜坡的级数与总长 —— 与 R046 校验规则共用同一套算法 */
-export function stairMetrics(
-  rise: number,
-  stepHeight: number,
-): { stepCount: number; tread: number; runLength: number } {
-  const tread = treadDepth(stepHeight);
-  const stepCount = Math.max(1, Math.ceil(rise / stepHeight));
-  return { stepCount, tread, runLength: stepCount * tread };
-}
-
-export function rampLength(rise: number): number {
-  return rise / RAMP_SLOPE;
-}
 
 // ── 零件构造 ────────────────────────────────────────────────
 
@@ -210,7 +176,7 @@ function buildStair(
   const rise = targetElevation - s.fromElevation;
   if (rise <= 0) return [];
   const { stepCount, tread } = stairMetrics(rise, s.stepHeight);
-  const dir = DIR[s.facing];
+  const dir = DIRECTION[s.facing];
   const actualStepHeight = rise / stepCount;
 
   const parts: BufferGeometry[] = [];
@@ -251,7 +217,7 @@ function buildRamp(
   const rise = targetElevation - s.fromElevation;
   if (rise <= 0) return [];
   const length = rampLength(rise);
-  const dir = DIR[s.facing];
+  const dir = DIRECTION[s.facing];
   const slabThickness = 0.2;
 
   // 斜板：先建水平板，再绕垂直于行进方向的水平轴倾斜
@@ -280,7 +246,7 @@ function buildLadder(
 ): BufferGeometry[] {
   const rise = targetElevation - s.fromElevation;
   if (rise <= 0) return [];
-  const dir = DIR[s.facing];
+  const dir = DIRECTION[s.facing];
   // 两根竖向侧梁分布在垂直于 facing 的方向上
   const px = -dir.z;
   const pz = dir.x;

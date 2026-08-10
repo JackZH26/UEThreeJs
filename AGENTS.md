@@ -161,7 +161,7 @@ pnpm verify:three   # three.js submodule 接线检查
 
 ## 7. 当前进度
 
-**Phase 0 已完成**：schema v0.1、校验器（28 条规则）、CLI、CI。
+**Phase 0 已完成**：schema v0.1、校验器（29 条规则）、CLI、CI。
 
 **Phase 1 进行中**，已完成：
 

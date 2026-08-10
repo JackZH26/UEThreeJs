@@ -164,7 +164,18 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 它们需要世界坐标，而注册表里的规则按 §4.6 必须几何无关。
 因此 `rules.test.ts` 的注册表自检不覆盖 R07x，其正确性由 `solver.test.ts` 保证。
 
-### 4.8 求解器的确定性要求
+### 4.8 几何推导只能有一份实现
+
+结构件的纯几何推导（Blondel 楼梯比例、斜坡坡度、朝向向量）住在
+**`packages/core/src/geometry.ts`**，`packages/scene` 从那里 re-export。
+
+原因：校验器需要它们（R046 要判断楼梯顶端是否落在平台上），而 core 不许依赖
+three.js。若两边各写一份，会出现「**校验通过但几何错位**」——
+这是最难查的一类 bug，因为两处代码单独看都对。
+
+新增此类推导时一律放 core，scene 只做"把数值变成 BufferGeometry"。
+
+### 4.9 求解器的确定性要求
 
 `solveLayout` 必须满足「同输入 → 逐字节同输出」，有测试守着。两个具体约束：
 

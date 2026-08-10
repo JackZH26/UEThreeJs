@@ -91,9 +91,12 @@ connections:
 
 ```
 packages/schema/   RoomGraph schema（Zod 4 → TS 类型 + 运行时校验 + JSON Schema）
-packages/core/     文档 IO、28 条校验规则、布局求解器、命令层契约（零 three.js 依赖）
+packages/core/     文档 IO、29 条校验规则、布局求解器、几何推导、命令层（零 three.js 依赖）
+packages/scene/    RoomGraph + Layout → three.js 场景（唯一允许 import three 的库包）
 apps/cli/          headless CLI —— AI agent 与 CI 的主接口
+apps/editor/       浏览器编辑器：左侧 3D 显示区 / 右侧操作面板，含第一人称漫游
 scripts/           构建期检查（three.js submodule 接线 / 单实例）
+three.alias.ts     three.js 模块解析映射（vite 与 vitest 共用的唯一来源）
 examples/          示例关卡，同时是 CI 回归夹具
 three.js/          submodule @ r185，只读参考
 ```
@@ -109,8 +112,14 @@ three.js/          submodule @ r185，只读参考
 
 ## 状态
 
-**Phase 0 完成**，**Phase 1 进行中** — 布局求解器已可用（`pnpm cli solve`）。
-下一步：three.js 场景构建与 3D 视口。详见 [ROADMAP](./docs/ROADMAP.md)。
+**Phase 0 完成**，**Phase 1 基本完成**：
+
+- 布局求解器（`pnpm cli solve --map` 带 ASCII 俯视图）
+- 房间外壳几何（带洞口的墙）+ 9 类内部结构件（夹层 / 楼梯 / 廊桥 / 柱梁…）
+- 3D 视口 + 第一人称漫游（可走进房间、爬楼梯上夹层）
+
+下一步 Phase 2：命令层实现、undo/redo、gizmo 编辑、file watcher 热重载。
+详见 [ROADMAP](./docs/ROADMAP.md)。
 
 ## 许可
 
