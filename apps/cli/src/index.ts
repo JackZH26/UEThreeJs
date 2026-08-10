@@ -4,6 +4,7 @@ import { SCHEMA_VERSION, toJsonSchemaFragments } from '@tjre/schema';
 import { ExitCode } from './exit.js';
 import { runValidate } from './commands/validate.js';
 import { runDescribe } from './commands/describe.js';
+import { runSolve } from './commands/solve.js';
 
 const USAGE = `
 tjre —— ThreeJsRoomEditor CLI (schema ${SCHEMA_VERSION})
@@ -16,6 +17,10 @@ tjre —— ThreeJsRoomEditor CLI (schema ${SCHEMA_VERSION})
 
   tjre describe <file.roomgraph.yaml> [--json]
       输出关卡的压缩摘要（房间规模 + 拓扑），用于先建立全局认知。
+
+  tjre solve <file.roomgraph.yaml> [--json] [--map]
+      从连接图求解房间世界坐标与旋转。文档里从不书写坐标，全部由此推导。
+      --map     额外输出 ASCII 俯视图（上=北），用于不开 3D 也能核对布局
 
   tjre schema [--fragment <name>]
       输出 JSON Schema。fragment 可选 document|room|opening|structure|connection。
@@ -69,6 +74,23 @@ function main(argv: string[]): ExitCode {
         return ExitCode.USAGE;
       }
       return runDescribe(file, values.json);
+    }
+
+    case 'solve': {
+      const { values, positionals } = parseArgs({
+        args: rest,
+        options: {
+          json: { type: 'boolean', default: false },
+          map: { type: 'boolean', default: false },
+        },
+        allowPositionals: true,
+      });
+      const file = positionals[0];
+      if (file === undefined) {
+        process.stderr.write('✗ 缺少参数：需要指定关卡文件路径。\n');
+        return ExitCode.USAGE;
+      }
+      return runSolve({ file, json: values.json, map: values.map });
     }
 
     case 'schema': {

@@ -32,6 +32,21 @@ pnpm cli validate examples/loft-warehouse.roomgraph.yaml --json   # 机器可读
 
 **每次编辑后必须跑 `validate`。** 诊断里的 `hint` 字段是专门写给你的修复建议，直接照做。
 
+改动了房间尺寸、开口 offset 或连接拓扑后，再跑一次 `solve --map` ——
+**布局是推导出来的**，改一个 offset 可能让下游整条房间链平移甚至旋转。
+ASCII 俯视图能让你不开 3D 就确认结果符合意图。
+
+### 校验分三层，逐层放行
+
+| 层         | 检查什么                                              |
+| ---------- | ----------------------------------------------------- |
+| `schema`   | 结构、类型、字段名（strict：拼错字段会硬报错）        |
+| `semantic` | 跨对象一致性：引用、doorCount、elevation 匹配、可达性 |
+| `layout`   | 几何冲突：房间重叠、环路矛盾、无法定位（R07x）        |
+
+上一层有 error 时**不会**进入下一层。`--json` 输出的 `stage` 字段告诉你卡在哪层，
+所以修完一批 error 后要**重跑** —— 可能会暴露出下一层的新问题。
+
 ---
 
 ## 3. CLI 契约
@@ -40,6 +55,7 @@ pnpm cli validate examples/loft-warehouse.roomgraph.yaml --json   # 机器可读
 | ---------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `pnpm cli describe <file> [--json]`            | 压缩摘要：房间尺寸、门数、结构件统计、拓扑                                           |
 | `pnpm cli validate <file> [--json] [--strict]` | 校验。**你应始终加 `--json`**                                                        |
+| `pnpm cli solve <file> [--json] [--map]`       | 从连接图求解房间世界坐标；`--map` 输出 ASCII 俯视图（上=北）                         |
 | `pnpm cli schema [--fragment <name>]`          | 输出 JSON Schema。fragment: `document`\|`room`\|`opening`\|`structure`\|`connection` |
 
 ### 退出码（用于分支判断，不会变）
@@ -57,6 +73,7 @@ pnpm cli validate examples/loft-warehouse.roomgraph.yaml --json   # 机器可读
 {
   "ok": false,
   "file": "examples/x.roomgraph.yaml",
+  "stage": "semantic",
   "errorCount": 1,
   "warningCount": 2,
   "diagnostics": [
@@ -144,9 +161,12 @@ pnpm verify:three   # three.js submodule 接线检查
 
 ## 7. 当前进度
 
-**Phase 0 已完成**：schema v0.1、校验器（28 条规则）、CLI（validate/describe/schema）、CI。
+**Phase 0 已完成**：schema v0.1、校验器（28 条规则）、CLI、CI。
+
+**Phase 1 进行中**：布局求解器已完成 —— `solve` 命令可用，含 R07x 冲突诊断
+（R070 房间重叠 / R071 环路或 pin 矛盾 / R072 无法定位 / R073 非法 pin 旋转）。
 
 **尚不存在**（不要假设它们可用）：
-布局 solver、3D 视口、编辑器 UI、命令实现、预设库（主题/道具）、导出器、UE 管线。
+3D 视口、编辑器 UI、命令实现、预设库（主题/道具）、导出器、UE 管线。
 
 路线图见 `docs/ROADMAP.md`。

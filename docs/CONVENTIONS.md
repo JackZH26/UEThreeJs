@@ -113,36 +113,67 @@ CLI / CI / AI agent 中 headless 运行。由 eslint `no-restricted-imports` 强
 - CI 校验：所有 `examples/` 关卡能被当前版本加载
 - 版本不符时 IO 层**先报版本错误**再谈字段，避免一屏无意义的字段错误
 
-### 4.6 校验规则编号
+### 4.6 三层校验模型
+
+逐层放行，**上一层有 error 时不进入下一层** —— 否则下层规则无法假设数据成立，
+会产出一堆由根因派生的噪声诊断。
+
+| 层         | 实现                             | 职责                                      |
+| ---------- | -------------------------------- | ----------------------------------------- |
+| `schema`   | Zod（`parseDocument`）           | 结构、类型、必填、枚举、strict 拒未知字段 |
+| `semantic` | `validateDocument` + `ALL_RULES` | 跨字段/跨对象一致性，**不涉及几何**       |
+| `layout`   | `solveLayout`                    | 布局求解产生的几何冲突                    |
+
+`validateDocument` 必须保持**几何无关**；一切需要世界坐标的检查都属于 `layout` 层。
+`tjre validate` 会依次跑完三层并合并诊断，JSON 输出里的 `stage` 字段标明实际推进到哪一层。
+
+### 4.7 校验规则编号
 
 按分段取下一个空号，**不复用已废弃编号**：
 
-| 段     | 主题                     | 文件                   |
-| ------ | ------------------------ | ---------------------- |
-| `R00x` | 身份 / 唯一性            | `rules/identity.ts`    |
-| `R01x` | 引用完整性               | `rules/references.ts`  |
-| `R02x` | 开口                     | `rules/openings.ts`    |
-| `R03x` | 连接 / 拓扑              | `rules/connections.ts` |
-| `R04x` | 内部结构件               | `rules/structures.ts`  |
-| `R05x` | 网格对齐                 | `rules/grid.ts`        |
-| `R06x` | gameplay                 | `rules/gameplay.ts`    |
-| `R07x` | 布局求解（Phase 1 预留） | —                      |
+| 段     | 主题          | 文件                   |
+| ------ | ------------- | ---------------------- |
+| `R00x` | 身份 / 唯一性 | `rules/identity.ts`    |
+| `R01x` | 引用完整性    | `rules/references.ts`  |
+| `R02x` | 开口          | `rules/openings.ts`    |
+| `R03x` | 连接 / 拓扑   | `rules/connections.ts` |
+| `R04x` | 内部结构件    | `rules/structures.ts`  |
+| `R05x` | 网格对齐      | `rules/grid.ts`        |
+| `R06x` | gameplay      | `rules/gameplay.ts`    |
+| `R07x` | 布局求解      | `solver/solve.ts`      |
 
 `error` 阻断导出；`warning` 不阻断但 CI 用 `--strict` 视为失败。
 
+⚠️ **`R07x` 由求解器直接产生，不在 `ALL_RULES` 注册表里** ——
+它们需要世界坐标，而注册表里的规则按 §4.6 必须几何无关。
+因此 `rules.test.ts` 的注册表自检不覆盖 R07x，其正确性由 `solver.test.ts` 保证。
+
+### 4.8 求解器的确定性要求
+
+`solveLayout` 必须满足「同输入 → 逐字节同输出」，有测试守着。两个具体约束：
+
+1. **禁止用 `Math.cos` / `Math.sin` 做 90° 旋转** ——
+   `Math.cos(Math.PI/2)` 返回 `6.123e-17` 而非 `0`，会给坐标带上浮点噪声，
+   破坏 golden 测试与序列化确定性。用 `solver/rotation.ts` 里的整数查表。
+2. **BFS 的队列与邻接表必须排序**（按 room id / connection id），
+   否则遍历顺序受 `Map` 插入顺序影响，环路冲突的报告位置会漂移。
+
 ## 5. 测试规范
 
-| 类型         | 覆盖                                                   | 工具            |
-| ------------ | ------------------------------------------------------ | --------------- |
-| 单元         | schema 校验、每条规则正反用例                          | Vitest          |
-| 往返         | 序列化确定性、解析往返稳定                             | Vitest          |
-| 夹具回归     | 所有 `examples/` 零 error 且 `--strict` 零 warning     | Vitest          |
-| Golden       | solver：输入图 → 期望坐标快照（Phase 1）               | Vitest snapshot |
-| **属性测试** | 随机命令序列 → 全部 undo → **文档回到初态**（Phase 2） | fast-check      |
-| 视觉回归     | example 固定机位截图比对（Phase 3）                    | Playwright      |
+| 类型         | 覆盖                                                   | 工具       |
+| ------------ | ------------------------------------------------------ | ---------- |
+| 单元         | schema 校验、每条规则正反用例                          | Vitest     |
+| 往返         | 序列化确定性、解析往返稳定                             | Vitest     |
+| 夹具回归     | 所有 `examples/` 零 error 且 `--strict` 零 warning     | Vitest     |
+| Golden       | solver：输入图 → **显式写死**的期望坐标                | Vitest     |
+| **属性测试** | 随机命令序列 → 全部 undo → **文档回到初态**（Phase 2） | fast-check |
+| 视觉回归     | example 固定机位截图比对（Phase 3）                    | Playwright |
 
 新增规则**必须**同时加"能抓到"和"不误报"两个用例。
 （实例：`R044` 初版对高窗误报，是 `loft-warehouse` 夹具抓出来的。）
+
+**solver 的 golden 测试刻意不用 snapshot**：坐标是手算可核对的，
+写成显式期望值等于把几何约定文档化；snapshot 会在改坏时被无声地更新掉。
 
 ## 6. Git 规范
 

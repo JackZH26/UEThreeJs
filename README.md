@@ -32,6 +32,7 @@ pnpm install
 
 pnpm cli describe examples/loft-warehouse.roomgraph.yaml
 pnpm cli validate examples/loft-warehouse.roomgraph.yaml --strict
+pnpm cli solve examples/loft-warehouse.roomgraph.yaml --map
 pnpm verify:three
 pnpm check
 ```
@@ -87,7 +88,7 @@ connections:
 
 ```
 packages/schema/   RoomGraph schema（Zod 4 → TS 类型 + 运行时校验 + JSON Schema）
-packages/core/     文档 IO、28 条校验规则、命令层契约（零 three.js 依赖）
+packages/core/     文档 IO、28 条校验规则、布局求解器、命令层契约（零 three.js 依赖）
 apps/cli/          headless CLI —— AI agent 与 CI 的主接口
 scripts/           构建期检查（three.js submodule 接线 / 单实例）
 examples/          示例关卡，同时是 CI 回归夹具
@@ -105,9 +106,9 @@ three.js/          submodule @ r185，只读参考
 
 ## 状态
 
-**Phase 0 完成** — schema v0.1、校验器、CLI、CI 就绪。
-下一步 Phase 1：布局求解 + 3D 可视化。详见 [ROADMAP](./docs/ROADMAP.md)。
+**Phase 0 完成**，**Phase 1 进行中** — 布局求解器已可用（`pnpm cli solve`）。
+下一步：three.js 场景构建与 3D 视口。详见 [ROADMAP](./docs/ROADMAP.md)。
 
 ## 许可
 
-尚未选定（依赖 MIT 的 three.js）。
+[MIT](./LICENSE)
