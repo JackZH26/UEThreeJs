@@ -37,6 +37,14 @@ AI agent 请读 [`../AGENTS.md`](../AGENTS.md)（本文件是人类开发规范�
   | `three/tsl`      | `three.js/build/three.tsl.js`    |
   | `three/addons/*` | `three.js/examples/jsm/*`        |
 
+- **`packages/scene` 有一条 `"three": "link:../../three.js"`** —— 这是**链到
+  submodule**，不是 npm 依赖：版本仍然由 submodule 唯一决定，`node_modules/three`
+  只是一个指向 `three.js/` 的符号链接。加它的原因是让 `three` 这个裸标识符在
+  **纯 Node**（`tsx`）下也能解析 —— vite / vitest 走 alias，但 CLI 走 tsx，
+  而 `tjre export` 需要在 Node 里跑 three。
+  `three.js/package.json` 自带 `exports` 映射（`.` / `./addons/*` / `./webgpu` /
+  `./tsl`），且**没有 `types` 字段**，所以类型仍然来自 `@types/three`。
+  `pnpm verify:three` 的单实例断言不受影响（链接不产生第二份拷贝）。
 - **必须锁 release tag，不能锁 main 上的 dev commit** ——
   three.js 的 `build/` 只在发版时重新生成，dev commit 上 `src/` 与 `build/` 的
   `REVISION` 会不一致（实测：commit `561f437` 的 src 是 `186dev` 而 build 是 `185`）
@@ -267,7 +275,20 @@ sample count (1) does not match`，整条 command buffer 随之失效。
    渲染成全黑，而**帧数照涨**。这个症状最有欺骗性 —— 排查时先问
    "这个房间有什么别的房间没有的东西"。见 `apps/editor/src/rectAreaLightSupport.ts`。
 
-### 5.5 光照强度不能照抄参考实现
+### 5.5 tsx 的一个坑：shebang + 动态 import 不能共存
+
+`apps/cli/src/index.ts` 有 shebang（`bin` 入口要能直接执行）。往这个文件里写
+动态 `import()` 会让 tsx **解析失败**：它的 `transformDynamicImport` 先用一个
+轻量 ESM 解析器扫全文，而那个解析器**不剥离 shebang** —— `#!/usr/bin/env` 里的
+`/usr/` 被当成正则字面量，整个文件随之错误切词。
+
+报错还很误导：`Parse error ...index.ts:2:113`，而第 2 行只有 38 个字符。
+实测去掉 shebang 或去掉动态 import 都正常，两者同时存在必挂。
+
+所以需要懒加载的命令统一放在 `apps/cli/src/lazyCommands.ts`（**没有 shebang**），
+`index.ts` 静态 import 那个模块。
+
+### 5.6 光照强度不能照抄参考实现
 
 从别的项目/示例搬色调曲线（tone mapping、对比、gamma）是安全的，
 **搬光强不是**：光强只在特定的 albedo 与遮挡分布下成立。

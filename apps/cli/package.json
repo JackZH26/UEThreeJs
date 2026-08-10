@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tjre/core": "workspace:*",
-    "@tjre/schema": "workspace:*"
+    "@tjre/schema": "workspace:*",
+    "@tjre/scene": "workspace:*"
   }
 }

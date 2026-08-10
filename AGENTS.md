@@ -86,7 +86,32 @@ pnpm cli validate examples/etc-m-catwalk-gallery.roomgraph.yaml --json --strict
 | ---------------------------------------------- | ---------------------------------------------------------------------- |
 | `pnpm cli describe <file> [--json]`            | 压缩摘要：规格、**派生**尺寸、传送门数、结构件统计                     |
 | `pnpm cli validate <file> [--json] [--strict]` | 校验。**你应始终加 `--json`**                                          |
+| `pnpm cli export <file> [--room <id>]`         | 导出 GLB（二进制 glTF）。见下方边界说明                                |
 | `pnpm cli schema [--fragment <name>]`          | 输出 JSON Schema。fragment: `document`\|`room`\|`opening`\|`structure` |
+
+### `export` 的边界
+
+```bash
+pnpm cli export examples/etc-l-atrium.roomgraph.yaml --out atrium.glb
+# 可选：--room <id>（多房间文档必填）/ --json / --no-ceiling / --no-lights
+```
+
+glTF 与 three.js 同为 **Y-up 右手系、单位米**，所以**不做坐标换算** ——
+手性翻转与 ×100 转厘米由 UE 的导入器负责。导出默认**开天花**
+（编辑器里默认关是为了看进内部，导给 UE 需要完整外壳）。
+
+⚠️ **这是核对几何与比例的通道，不是最终 UE 资产。** 已知限制：
+
+- **UV 不能平铺**：墙面是 `ExtrudeGeometry` + Earcut 挖洞，用的是默认 UV
+  生成器，也没有 lightmap UV
+- **墙角互相重叠** `WALL_T × WALL_T` → UE 里碰撞体会重复计算
+- **楼梯是阶梯状实体**，没有斜坡碰撞代理 → 角色走上去会顿挫
+- **面光源丢失**（glTF 的 `KHR_lights_punctual` 只有 point/spot/directional）；
+  命令会明确报出被跳过的灯，不静默丢
+- **markers 不导出** —— 它们是 gameplay 元数据而非几何，属于数据导出（JSON）
+
+正经的 UE 资产要走模块化套件 + commandlet 重建，而不是烘这份网格 ——
+理由与方案见 `packages/scene/src/gltf.ts` 末尾。
 
 ### 退出码（用于分支判断，不会变）
 

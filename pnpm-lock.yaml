@@ -44,6 +44,9 @@ importers:
       '@tjre/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@tjre/scene':
+        specifier: workspace:*
+        version: link:../../packages/scene
       '@tjre/schema':
         specifier: workspace:*
         version: link:../../packages/schema
@@ -102,6 +105,9 @@ importers:
       '@tjre/schema':
         specifier: workspace:*
         version: link:../schema
+      three:
+        specifier: link:../../three.js
+        version: link:../../three.js
     devDependencies:
       '@types/three':
         specifier: 0.185.4

@@ -27,6 +27,9 @@ export type { SurfaceSpec } from './palette.js';
 export { buildLight, buildLights } from './lights.js';
 export type { BuiltLight, BuiltLights } from './lights.js';
 
+export { exportGLB } from './gltf.js';
+export type { ExportGLBOptions, ExportGLBResult } from './gltf.js';
+
 export { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 export type { WallGeometryResult } from './shell.js';
 

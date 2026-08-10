@@ -9,7 +9,8 @@
   },
   "dependencies": {
     "@tjre/core": "workspace:*",
-    "@tjre/schema": "workspace:*"
+    "@tjre/schema": "workspace:*",
+    "three": "link:../../three.js"
   },
   "devDependencies": {
     "@types/three": "0.185.4"

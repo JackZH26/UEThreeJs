@@ -47,6 +47,9 @@ pnpm install
 
 pnpm cli describe examples/etc-m-catwalk-gallery.roomgraph.yaml
 pnpm cli validate examples/etc-m-catwalk-gallery.roomgraph.yaml --strict
+
+# 导出 GLB（可拖进 UE / Blender / 任意 glTF 查看器）
+pnpm cli export examples/etc-m-catwalk-gallery.roomgraph.yaml --out gallery.glb
 pnpm verify:three
 pnpm check
 
@@ -95,7 +98,7 @@ packages/core/     文档 IO、17 条校验规则、几何推导、命令层（�
 packages/scene/    Room → three.js 场景 + 材质调色板 + 灯光（唯一允许 import three 的库包）
 apps/cli/          headless CLI —— AI agent 与 CI 的主接口
 apps/editor/       浏览器编辑器：左侧 3D 显示区 / 右侧操作面板，中英文切换，含第一人称漫游
-scripts/           构建期检查（three.js submodule 接线 / 单实例）
+scripts/           构建期检查（submodule 接线 / 单实例）+ 运行期探针（CDP 自检编辑器）
 three.alias.ts     three.js 模块解析映射（vite 与 vitest 共用的唯一来源）
 examples/          S / M / L 各一个示例关卡，同时是 CI 回归夹具
 three.js/          submodule @ r185，只读参考
@@ -120,6 +123,9 @@ three.js/          submodule @ r185，只读参考
 - 影调对齐 three.js 的 [SSR + Denoise 示例](https://threejs.org/examples/#webgpu_postprocessing_ssr_denoise)：
   AgX 色调映射、阴影、程序化 IBL、屏幕空间反射 + 时域降噪 + TRAA；
   冷灰工业调色板；关卡自带灯光真正参与渲染
+- **GLB 导出**（`pnpm cli export`）：glTF 与 three.js 同为 Y-up 右手系、单位米，
+  不做坐标换算，手性与单位由 UE 导入器负责。适合核对几何与比例，
+  **不是最终 UE 资产**（UV 不可平铺、楼梯无斜坡碰撞代理）—— 边界见 `AGENTS.md`
 
 下一步 Phase 2：命令层实现、undo/redo、gizmo 编辑、file watcher 热重载。
 详见 [ROADMAP](./docs/ROADMAP.md)。
