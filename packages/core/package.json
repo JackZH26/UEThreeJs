@@ -1,0 +1,15 @@
+{
+  "name": "@tjre/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "文档 IO、校验器、命令层 —— 零 three.js 依赖，可在 CLI / CI / AI agent 中 headless 运行",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tjre/schema": "workspace:*",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  }
+}

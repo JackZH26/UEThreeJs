@@ -1,0 +1,40 @@
+{
+  "name": "threejs-room-editor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI 原生的房间关卡编辑器 — 为多房间串联游戏设计，导出至 UE 5.8.1",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cli": "tsx apps/cli/src/index.ts",
+    "dev": "pnpm --filter @tjre/editor dev",
+    "schema:emit": "tsx packages/schema/src/bin/emit-json-schema.ts",
+    "verify:three": "tsx scripts/verify-three.ts",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.0.0",
+    "eslint": "^10.8.1",
+    "prettier": "^3.3.0",
+    "tsx": "^4.23.12",
+    "typescript": "5.9.3",
+    "typescript-eslint": "^8.66.0",
+    "vitest": "^4.1.10"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

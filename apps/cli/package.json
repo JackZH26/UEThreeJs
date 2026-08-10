@@ -1,0 +1,14 @@
+{
+  "name": "@tjre/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "headless CLI —— 外部 AI agent(Cindy / Codex / Claude Code)与 CI 操作关卡的主接口",
+  "bin": {
+    "tjre": "./src/index.ts"
+  },
+  "dependencies": {
+    "@tjre/core": "workspace:*",
+    "@tjre/schema": "workspace:*"
+  }
+}

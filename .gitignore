@@ -1,0 +1,18 @@
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.log
+.idea/
+.vscode/*
+!.vscode/extensions.json
+# 生成物
+docs/generated/
+test-results/
+playwright-report/

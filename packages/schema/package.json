@@ -1,0 +1,13 @@
+{
+  "name": "@tjre/schema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "RoomGraph 文档 schema —— 单一来源产出 TS 类型 / 运行时校验 / JSON Schema(供 AI agent)",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  }
+}

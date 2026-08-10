@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # three.js 是 shallow submodule，锁定在 r185
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # three.js 接线：REVISION 一致性 + 单实例（multiple instances of three.js 是经典坑）
+      - name: three.js submodule 接线检查
+        run: pnpm verify:three
+
+      - name: 格式
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: 类型检查
+        run: pnpm typecheck
+
+      - name: 单元测试
+        run: pnpm test
+
+      # 示例关卡是回归夹具：--strict 下必须零 error 零 warning
+      - name: 示例关卡校验（strict）
+        run: |
+          for f in examples/*.roomgraph.yaml; do
+            echo "── $f"
+            pnpm -s cli validate "$f" --strict
+          done
+
+      # JSON Schema 必须能生成（AI agent 依赖它）
+      - name: JSON Schema 生成
+        run: pnpm schema:emit

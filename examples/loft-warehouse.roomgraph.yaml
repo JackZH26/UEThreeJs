@@ -1,0 +1,201 @@
+# 目标形态示例：很高的仓库 / loft，外壳全封闭，内部靠夹层 + 室内楼梯组织竖向空间。
+# 关键点：`hall` 是 10m 高的主厅，夹层 platform 在 4m，楼梯从地面上到夹层，
+#         通往 catwalk_room 的门开在 4m 夹层高度（两端 elevation 必须相等）。
+# 用途：Phase 1 的验收样本（内部结构件 + 夹层门）。
+schemaVersion: 0.1.0
+
+meta:
+  name: Loft Warehouse
+  units: meters
+  grid: 0.5
+  wallThickness: 0.25
+  entryRoom: dock
+  description: |
+    三个房间串联：装卸区 → 主厅(带夹层) → 高架廊桥间。
+    主厅演示 loft 结构：地面 + 4m 夹层 + 楼梯 + 立柱。
+    主厅通往廊桥间的门开在夹层高度 4m，验证 elevation 匹配规则。
+
+themes:
+  - id: warehouse
+    name: Warehouse Concrete
+    surfaces:
+      floor: concrete_floor_worn
+      ceiling: steel_deck
+      wall: concrete_wall_panel
+      structure: painted_steel
+    lightPreset: warehouse_dim
+    ambientColor: '#2a2e33'
+
+  - id: catwalk_zone
+    name: Catwalk Zone
+    surfaces:
+      floor: steel_grating
+      ceiling: steel_deck
+      wall: corrugated_metal
+      structure: painted_steel
+    lightPreset: industrial_spot
+
+rooms:
+  # ── 装卸区：普通层高，单门 ─────────────────────────────
+  - id: dock
+    name: Loading Dock
+    size: { w: 10, d: 8, h: 5 }
+    theme: warehouse
+    doorCount: 1
+    openings:
+      - id: door_to_hall
+        wall: north
+        type: passage
+        offset: 0
+        size: { w: 3, h: 3.5 }
+        note: 卷帘门尺寸，供叉车通过
+    props:
+      - id: pallet_a
+        prefab: wooden_pallet
+        at: { x: -3, y: 0, z: 1 }
+        rotationY: 15
+      - id: pallet_b
+        prefab: wooden_pallet
+        at: { x: -3, y: 0, z: 2.5 }
+    markers:
+      - id: spawn_player
+        kind: spawn
+        at: { x: 0, y: 0, z: 2.5 }
+        rotationY: 180
+
+  # ── 主厅：10m 高 loft，夹层 + 楼梯 + 柱 ────────────────
+  - id: hall
+    name: Main Hall
+    size: { w: 20, d: 16, h: 10 }
+    theme: warehouse
+    doorCount: 2
+    openings:
+      - id: door_to_dock
+        wall: south
+        type: passage
+        offset: 0
+        size: { w: 3, h: 3.5 }
+
+      # 夹层高度的门 —— elevation 与对面房间必须一致
+      - id: door_to_catwalk
+        wall: north
+        type: door
+        offset: 6
+        size: { w: 1.6, h: 2.4 }
+        elevation: 4
+        note: 开在夹层上，需经楼梯到达
+
+      - id: window_west
+        wall: west
+        type: window
+        offset: 0
+        size: { w: 4, h: 2 }
+        elevation: 6
+        note: 高窗，不可通行，不计入 doorCount
+
+    structures:
+      # 贴北墙的夹层平台（mezzanine 就是贴墙的 platform）
+      - id: mezzanine_north
+        type: platform
+        rect: { x: 0, z: -5, w: 20, d: 6 }
+        elevation: 4
+        thickness: 0.35
+        railing: [south]
+        note: 夹层，门 door_to_catwalk 就落在它上面
+
+      # 从地面上到夹层的室内楼梯
+      - id: stair_to_mezzanine
+        type: stair
+        from: { x: -7, z: 1 }
+        fromElevation: 0
+        to: mezzanine_north
+        width: 1.4
+        facing: north
+        stepHeight: 0.18
+        railing: both
+
+      # 横跨主厅的廊桥，接到夹层高度
+      - id: catwalk_mid
+        type: catwalk
+        path:
+          - { x: 8, z: -2 }
+          - { x: 8, z: 4 }
+          - { x: 2, z: 4 }
+        elevation: 4
+        width: 1.2
+        railing: both
+
+      - id: pillar_a
+        type: pillar
+        at: { x: -6, z: 4 }
+        profile: square
+        size: 0.5
+
+      - id: pillar_b
+        type: pillar
+        at: { x: 6, z: 4 }
+        profile: square
+        size: 0.5
+
+    lights:
+      - id: bay_light_a
+        type: point
+        at: { x: -5, y: 8.5, z: 0 }
+        range: 14
+      - id: bay_light_b
+        type: point
+        at: { x: 5, y: 8.5, z: 0 }
+        range: 14
+
+    markers:
+      - id: cover_crate_1
+        kind: cover
+        at: { x: -2, y: 0, z: 3 }
+        radius: 1.2
+
+  # ── 高架廊桥间：入口在 4m 处 ───────────────────────────
+  - id: catwalk_room
+    name: Catwalk Room
+    size: { w: 12, d: 8, h: 8 }
+    theme: catwalk_zone
+    doorCount: 1
+    openings:
+      - id: door_to_hall
+        wall: south
+        type: door
+        offset: -2
+        size: { w: 1.6, h: 2.4 }
+        elevation: 4
+    structures:
+      # 门落在 4m，所以此处必须有同高度的可行走面
+      - id: platform_entry
+        type: platform
+        rect: { x: 0, z: -1, w: 12, d: 6 }
+        elevation: 4
+        thickness: 0.3
+        railing: [south]
+      - id: ladder_down
+        type: ladder
+        at: { x: 5, z: 2 }
+        fromElevation: 0
+        to: platform_entry
+        width: 0.6
+        facing: west
+    lights:
+      - id: spot_a
+        type: spot
+        at: { x: 0, y: 7, z: 0 }
+        tiltX: -80
+        coneAngle: 45
+
+connections:
+  - id: dock_to_hall
+    from: dock.door_to_hall
+    to: hall.door_to_dock
+
+  - id: hall_to_catwalk
+    from: hall.door_to_catwalk
+    to: catwalk_room.door_to_hall
+    locked: true
+    keyId: maintenance_key
+    note: 需要维修钥匙；两端 elevation 都是 4
