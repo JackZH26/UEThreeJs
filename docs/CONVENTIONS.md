@@ -47,10 +47,10 @@ AI agent 请读 [`../AGENTS.md`](../AGENTS.md)（本文件是人类开发规范�
 ```
 packages/schema/   Zod schema + TS 类型 + JSON Schema 生成
 packages/core/     文档 IO、校验器、几何推导、命令层
-packages/scene/    Room → three.js 场景（唯一允许 import three 的库包）
+packages/scene/    Room → three.js 场景 + 材质调色板 + 灯光（唯一允许 import three 的库包）
 apps/cli/          headless CLI（AI agent 与 CI 的主接口）
-apps/editor/       浏览器编辑器（Vite + React）
-scripts/           构建期检查
+apps/editor/       浏览器编辑器（Vite + React）+ 后处理管线（唯一用 three/webgpu 的地方）
+scripts/           构建期检查 + 运行期探针
 three.alias.ts     three.js 模块解析映射（vitest 与 vite 共用的唯一来源）
 examples/          示例关卡（同时是 CI 回归夹具）
 three.js/          submodule，只读
@@ -238,6 +238,42 @@ snapshot 会在改坏时被无声地更新掉。
 
 Node 通过不代表打包通过，两套解析逻辑不同。CI 会先构建编辑器再跑这个检查。
 产物检查依赖一个标记字符串，three.js 升级后可能失效 —— 脚本自带自检并会明确报出。
+
+### 5.3 渲染管线只能在真实 GPU 上验证
+
+单元测试跑在 Node 里，**碰不到 WebGPU**。渲染管线的错误只在真实设备上出现，
+而且症状通常是"画面不对"而不是抛异常 —— 靠肉眼看服务又慢又容易漏掉一屏之外的报错。
+
+`pnpm probe:editor [--shots <目录>]`（`scripts/probe-editor.ts`）：用 CDP 真开一个
+Chrome 把编辑器跑起来，遍历每个关卡，**机器判定**「是否在渲染」（canvas + 帧数）
+并汇总全程控制台的 error / warning；带 `--shots` 时逐关卡截图供人看影调。
+退出码 0 = 干净。改过渲染器 / 材质 / 灯光 / 后处理后应当跑一次。
+
+⚠️ **控制台必须在遍历完所有关卡之后才汇总。** 第一版在切关卡前就打印了，
+结果只有 L 规格触发的那个错误压根没被打出来 —— 表现成"一张黑图 + 控制台干净"。
+
+### 5.4 WebGPU 管线的三个坑（都实际踩过）
+
+1. **开 SSR 时必须关 MSAA。** 后处理要把场景 pass 的深度纹理拷给 SSR，
+   多重采样深度纹理拷不到单采样目标：`sample count (4) and destination
+sample count (1) does not match`，整条 command buffer 随之失效。
+   抗锯齿改由 TRAA 承担（`WebGPURenderer({ antialias: !ssr })`）。
+2. **`stochastic: true` 的 SSR 必须配环境贴图。** `SSRNode` 在射线未命中时
+   **无条件**取样环境，不看 `screenEdgeFadeBlack`；没调 `setEnvMap()` 就会在
+   构建着色器时抛 `Cannot read properties of null (reading 'sampleEnvironmentBRDF')`。
+   室内场景不必加载 HDR —— 现算一张小的 equirect `DataTexture` 就够
+   （见 `apps/editor/src/renderPipeline.ts` 的 `createInteriorEnvMap`）。
+3. **用 `RectAreaLight` 前必须 `RectAreaLightNode.setLTC(...)`。** 否则整个房间
+   渲染成全黑，而**帧数照涨**。这个症状最有欺骗性 —— 排查时先问
+   "这个房间有什么别的房间没有的东西"。见 `apps/editor/src/rectAreaLightSupport.ts`。
+
+### 5.5 光照强度不能照抄参考实现
+
+从别的项目/示例搬色调曲线（tone mapping、对比、gamma）是安全的，
+**搬光强不是**：光强只在特定的 albedo 与遮挡分布下成立。
+照抄 three.js SSR 示例的方向光 20 / 环境 1.0 到我们的混凝土开顶房间，
+结果是整屏过曝、配色完全看不出来。数值必须按自己的内容重新收敛
+（用 §5.3 的截图回路），并在代码里注明是**待标定**的经验值。
 
 ## 6. Git 规范
 

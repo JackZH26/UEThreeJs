@@ -92,7 +92,7 @@ rooms:
 ```
 packages/schema/   RoomGraph schema（Zod 4 → TS 类型 + 运行时校验 + JSON Schema）+ S/M/L 规格派生表
 packages/core/     文档 IO、17 条校验规则、几何推导、命令层（零 three.js 依赖）
-packages/scene/    Room → three.js 场景（唯一允许 import three 的库包）
+packages/scene/    Room → three.js 场景 + 材质调色板 + 灯光（唯一允许 import three 的库包）
 apps/cli/          headless CLI —— AI agent 与 CI 的主接口
 apps/editor/       浏览器编辑器：左侧 3D 显示区 / 右侧操作面板，中英文切换，含第一人称漫游
 scripts/           构建期检查（three.js submodule 接线 / 单实例）
@@ -117,6 +117,9 @@ three.js/          submodule @ r185，只读参考
 - S/M/L 规格派生表（尺寸 + 传送门），外壳 AABB = 占格尺寸有测试保证
 - 房间外壳几何（带洞口的墙）+ 9 类内部结构件（夹层 / 楼梯 / 廊桥 / 柱梁…）+ 固定样式传送门
 - 3D 视口 + 第一人称漫游（可走进房间、爬楼梯上夹层），中英文切换
+- 影调对齐 three.js 的 [SSR + Denoise 示例](https://threejs.org/examples/#webgpu_postprocessing_ssr_denoise)：
+  AgX 色调映射、阴影、程序化 IBL、屏幕空间反射 + 时域降噪 + TRAA；
+  冷灰工业调色板；关卡自带灯光真正参与渲染
 
 下一步 Phase 2：命令层实现、undo/redo、gizmo 编辑、file watcher 热重载。
 详见 [ROADMAP](./docs/ROADMAP.md)。

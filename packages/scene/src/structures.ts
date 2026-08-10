@@ -2,8 +2,8 @@ import { BoxGeometry, CylinderGeometry } from 'three';
 import type { BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { PointXZ, Room, Structure, WallSide } from '@tjre/schema';
-import { roomSize } from '@tjre/schema';
-import { DIRECTION, rampLength, stairMetrics } from '@tjre/core';
+import { OPPOSITE_WALL, roomSize } from '@tjre/schema';
+import { DIRECTION, advance, rampLength, stairMetrics } from '@tjre/core';
 
 // 与校验器 R046 共用同一套推导，避免两边各算一遍而漂移
 export { rampLength, stairMetrics } from '@tjre/core';
@@ -66,27 +66,103 @@ function bar(
   );
 }
 
-/** 沿折线生成护栏：立柱 + 顶部扶手 */
-function railingAlong(path: readonly PointXZ[], baseY: number, height: number): BufferGeometry[] {
+/**
+ * 护栏上的一个开口 —— 楼梯 / 斜坡 / 爬梯接进平台的位置必须断开，
+ * 否则栏杆会横在楼梯口上，人上不去（这是真实踩到的问题）。
+ */
+export interface RailingGap {
+  /** 开口中心（房间局部平面坐标） */
+  center: PointXZ;
+  /** 开口半宽 */
+  halfWidth: number;
+}
+
+/** 开口两侧额外留出的余量，避免栏杆立柱正好卡在楼梯边缘 */
+const GAP_MARGIN = 0.3;
+
+/**
+ * 把 [0,1] 参数区间按开口切成若干段。
+ *
+ * 只用于**单条直线段**：把每个开口投影到这条线段上得到要挖掉的参数窗口，
+ * 再从 [0,1] 里减掉。返回的每一段都会独立生成扶手与立柱。
+ */
+function segmentsAfterGaps(
+  a: PointXZ,
+  b: PointXZ,
+  gaps: readonly RailingGap[],
+): [number, number][] {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const length = Math.hypot(dx, dz);
+  if (length < 1e-6) return [];
+
+  const holes: [number, number][] = [];
+  for (const gap of gaps) {
+    // 开口中心在这条线段上的投影参数
+    const t = ((gap.center.x - a.x) * dx + (gap.center.z - a.z) * dz) / (length * length);
+    const half = (gap.halfWidth + GAP_MARGIN) / length;
+    const lo = t - half;
+    const hi = t + half;
+    if (hi <= 0 || lo >= 1) continue; // 开口不在这条边上
+    holes.push([Math.max(0, lo), Math.min(1, hi)]);
+  }
+  if (holes.length === 0) return [[0, 1]];
+
+  holes.sort((x, y) => x[0] - y[0]);
+  const spans: [number, number][] = [];
+  let cursor = 0;
+  for (const [lo, hi] of holes) {
+    if (lo > cursor) spans.push([cursor, lo]);
+    cursor = Math.max(cursor, hi);
+  }
+  if (cursor < 1) spans.push([cursor, 1]);
+  // 太短的残段不值得生成（两根立柱贴在一起很难看）
+  return spans.filter(([lo, hi]) => (hi - lo) * length > 0.4);
+}
+
+/** 沿折线生成护栏：立柱 + 顶部扶手。`gaps` 处断开。 */
+function railingAlong(
+  path: readonly PointXZ[],
+  baseY: number,
+  height: number,
+  gaps: readonly RailingGap[] = [],
+): BufferGeometry[] {
   const parts: BufferGeometry[] = [];
   for (let i = 0; i < path.length - 1; i++) {
     const a = path[i];
     const b = path[i + 1];
     if (a === undefined || b === undefined) continue;
 
-    const handrail = bar(a, b, baseY + height - RAIL_THICKNESS / 2, RAIL_THICKNESS, RAIL_THICKNESS);
-    if (handrail !== null) parts.push(handrail);
+    const lerp = (t: number): PointXZ => ({ x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t });
 
-    const segLength = Math.hypot(b.x - a.x, b.z - a.z);
-    const postCount = Math.max(2, Math.round(segLength / POST_SPACING) + 1);
-    for (let p = 0; p < postCount; p++) {
-      const t = p / (postCount - 1);
-      parts.push(
-        box(
-          { w: POST_SIZE, h: height, d: POST_SIZE },
-          { x: a.x + (b.x - a.x) * t, y: baseY + height / 2, z: a.z + (b.z - a.z) * t },
-        ),
+    for (const [lo, hi] of segmentsAfterGaps(a, b, gaps)) {
+      const start = lerp(lo);
+      const end = lerp(hi);
+
+      const handrail = bar(
+        start,
+        end,
+        baseY + height - RAIL_THICKNESS / 2,
+        RAIL_THICKNESS,
+        RAIL_THICKNESS,
       );
+      if (handrail !== null) parts.push(handrail);
+
+      const segLength = Math.hypot(end.x - start.x, end.z - start.z);
+      const postCount = Math.max(2, Math.round(segLength / POST_SPACING) + 1);
+      for (let p = 0; p < postCount; p++) {
+        const t = p / (postCount - 1);
+        parts.push(
+          box(
+            { w: POST_SIZE, h: height, d: POST_SIZE },
+            {
+              x: start.x + (end.x - start.x) * t,
+              y: baseY + height / 2,
+              z: start.z + (end.z - start.z) * t,
+            },
+          ),
+        );
+      }
     }
   }
   return parts;
@@ -157,7 +233,10 @@ function sideRailingPaths(
 
 type PlatformLike = Extract<Structure, { type: 'platform' }>;
 
-function buildPlatform(s: PlatformLike): BufferGeometry[] {
+function buildPlatform(
+  s: PlatformLike,
+  gapsByEdge: Partial<Record<WallSide, RailingGap[]>> = {},
+): BufferGeometry[] {
   const parts: BufferGeometry[] = [
     box(
       { w: s.rect.w, h: s.thickness, d: s.rect.d },
@@ -165,9 +244,54 @@ function buildPlatform(s: PlatformLike): BufferGeometry[] {
     ),
   ];
   for (const side of s.railing) {
-    parts.push(...railingAlong(rectEdge(s.rect, side), s.elevation, RAILING_HEIGHT));
+    parts.push(
+      ...railingAlong(rectEdge(s.rect, side), s.elevation, RAILING_HEIGHT, gapsByEdge[side] ?? []),
+    );
   }
   return parts;
+}
+
+/**
+ * 找出所有接进这个平台的楼梯 / 斜坡 / 爬梯，算出各自该在哪条边上留多宽的开口。
+ *
+ * 这是**派生**的，不需要作者声明：作者已经写了 `stair.to = <平台 id>` 和 `facing`，
+ * 那么"从哪条边进来"就是确定的 —— 朝北上行必然穿过平台的**南**边。
+ * 让作者手写"哪条边留口"是一份必然会和 facing 漂移的冗余数据。
+ *
+ * 落点的算法与校验规则 R046 **完全共用**（`stairMetrics` / `rampLength` / `advance`
+ * 都来自 `@tjre/core`），所以"校验说落点在平台上"与"栏杆开口开在落点处"永远一致。
+ */
+function railingGapsFor(room: Room, platformId: string): Partial<Record<WallSide, RailingGap[]>> {
+  const gaps: Partial<Record<WallSide, RailingGap[]>> = {};
+
+  for (const other of room.structures) {
+    if (other.type !== 'stair' && other.type !== 'ramp' && other.type !== 'ladder') continue;
+    if (other.to !== platformId) continue;
+
+    // 上行方向的反向就是进入边：朝北上行 → 从南边进
+    const edge = OPPOSITE_WALL[other.facing];
+
+    let center: PointXZ;
+    let halfWidth: number;
+    if (other.type === 'ladder') {
+      center = other.at;
+      halfWidth = other.width / 2;
+    } else {
+      const target = room.structures.find((s) => s.id === platformId);
+      const targetElevation =
+        target !== undefined && 'elevation' in target ? target.elevation : other.fromElevation;
+      const rise = targetElevation - other.fromElevation;
+      if (rise <= 0) continue;
+      const run =
+        other.type === 'stair' ? stairMetrics(rise, other.stepHeight).runLength : rampLength(rise);
+      center = advance(other.from, other.facing, run);
+      halfWidth = other.width / 2;
+    }
+
+    (gaps[edge] ??= []).push({ center, halfWidth });
+  }
+
+  return gaps;
 }
 
 function buildStair(
@@ -339,7 +463,8 @@ export function buildStructureGeometry(
   let parts: BufferGeometry[];
   switch (structure.type) {
     case 'platform':
-      parts = buildPlatform(structure);
+      // 栏杆在楼梯 / 斜坡 / 爬梯的接入处断开，否则上不去
+      parts = buildPlatform(structure, railingGapsFor(room, structure.id));
       break;
     case 'stair':
       parts = buildStair(structure, targetElevation(structure.to));

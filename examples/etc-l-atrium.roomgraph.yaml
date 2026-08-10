@@ -141,27 +141,64 @@ rooms:
       - { id: pil_sw, type: pillar, at: { x: -6, z: 6 }, size: 1.6, profile: square, height: 7 }
       - { id: pil_se, type: pillar, at: { x: 6, z: 6 }, size: 1.6, profile: square, height: 7 }
 
+    # 中庭的照明逻辑：顶部天窗（area，冷白）打下来照亮通天空洞，
+    # 四条环廊各一盏暖灯做局部照明。area 光在 three 里不投影（引擎限制），
+    # 所以造型阴影靠编辑器的方向主光；只给桥下那盏点光开投影，
+    # 让 20m 孤岛平台在桥面上留下影子、读出高度关系。
     lights:
       - {
           id: sky,
           type: area,
           at: { x: 0, y: 23.5, z: 0 },
-          tiltX: -90,
-          intensity: 700,
+          tiltX: 0,
+          intensity: 9,
           size: { w: 26, h: 26 },
           color: '#dbe9ff',
         }
-      - { id: lamp_g1n, type: point, at: { x: 0, y: 6, z: -22 }, intensity: 600, range: 24 }
-      - { id: lamp_g1s, type: point, at: { x: 0, y: 6, z: 22 }, intensity: 600, range: 24 }
-      - { id: lamp_g1w, type: point, at: { x: -22, y: 6, z: 0 }, intensity: 600, range: 24 }
-      - { id: lamp_g1e, type: point, at: { x: 22, y: 6, z: 0 }, intensity: 600, range: 24 }
+      - {
+          id: lamp_g1n,
+          type: point,
+          at: { x: 0, y: 6, z: -22 },
+          intensity: 850,
+          range: 26,
+          color: '#ffdca6',
+          castShadow: false,
+        }
+      - {
+          id: lamp_g1s,
+          type: point,
+          at: { x: 0, y: 6, z: 22 },
+          intensity: 850,
+          range: 26,
+          color: '#ffdca6',
+          castShadow: false,
+        }
+      - {
+          id: lamp_g1w,
+          type: point,
+          at: { x: -22, y: 6, z: 0 },
+          intensity: 850,
+          range: 26,
+          color: '#ffdca6',
+          castShadow: false,
+        }
+      - {
+          id: lamp_g1e,
+          type: point,
+          at: { x: 22, y: 6, z: 0 },
+          intensity: 850,
+          range: 26,
+          color: '#ffdca6',
+          castShadow: false,
+        }
       - {
           id: lamp_bridge,
           type: point,
-          at: { x: 0, y: 18, z: 0 },
-          intensity: 500,
-          range: 20,
+          at: { x: 0, y: 18.5, z: 0 },
+          intensity: 650,
+          range: 24,
           color: '#9fd4ff',
+          castShadow: true,
         }
 
     markers:

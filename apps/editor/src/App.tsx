@@ -57,10 +57,13 @@ export function App(): React.ReactElement {
   // 天花默认关：编辑器常态是从外部俯视，开着就什么内部都看不到
   const [showCeiling, setShowCeiling] = useState(false);
   const [showStructures, setShowStructures] = useState(true);
+  const [showLights, setShowLights] = useState(true);
+  const [ssr, setSsr] = useState(true);
   const [firstPerson, setFirstPerson] = useState(false);
   const [stats, setStats] = useState<ViewportStats | null>(null);
   const [backend, setBackend] = useState<string | null>(null);
   const [rendererError, setRendererError] = useState<Error | null>(null);
+  const [postFallback, setPostFallback] = useState<Error | null>(null);
   const [frames, setFrames] = useState(0);
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
@@ -116,10 +119,13 @@ export function App(): React.ReactElement {
                 wireframe={wireframe}
                 showCeiling={showCeiling}
                 showStructures={showStructures}
+                showLights={showLights}
+                ssr={ssr}
                 firstPerson={firstPerson}
                 onStats={setStats}
                 onBackend={setBackend}
                 onError={setRendererError}
+                onPostFallback={setPostFallback}
                 onFrames={setFrames}
               />
             )}
@@ -198,6 +204,12 @@ export function App(): React.ReactElement {
           <Toggle checked={showStructures} onChange={setShowStructures}>
             {t('toggle.structures')}
           </Toggle>
+          <Toggle checked={showLights} onChange={setShowLights}>
+            {t('toggle.lights')}
+          </Toggle>
+          <Toggle checked={ssr} onChange={setSsr}>
+            {t('toggle.ssr')}
+          </Toggle>
           <Toggle checked={showCeiling} onChange={setShowCeiling}>
             {t('toggle.ceiling')}
           </Toggle>
@@ -207,6 +219,19 @@ export function App(): React.ReactElement {
           <Toggle checked={firstPerson} onChange={setFirstPerson}>
             {t('toggle.firstPerson')}
           </Toggle>
+          {postFallback !== null && (
+            <div
+              style={{
+                color: 'var(--warn)',
+                fontSize: 11,
+                marginTop: 6,
+                lineHeight: 1.6,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {`${t('note.postFallback')}\n${postFallback.message}`}
+            </div>
+          )}
         </Section>
 
         <Section title={t('section.room')}>
@@ -293,7 +318,14 @@ function RoomRows({
       {room.openings.length > 0 && <Row k={t('row.openings')} v={String(room.openings.length)} />}
       <Row k={t('row.structures')} v={String(room.structures.length)} />
       <Row k={t('row.props')} v={String(room.props.length)} />
-      <Row k={t('row.lights')} v={String(room.lights.length)} />
+      <Row
+        k={t('row.lights')}
+        v={
+          stats === null
+            ? String(room.lights.length)
+            : `${stats.lights} / ${room.lights.length}${stats.shadowCasters > 0 ? `  ·  ${stats.shadowCasters} ${t('unit.shadowCasters')}` : ''}`
+        }
+      />
       <Row k={t('row.markers')} v={String(room.markers.length)} />
       {backend !== null && <Row k={t('row.backend')} v={backend} />}
       <Row k={t('row.frames')} v={frames === 0 ? t('value.framesStalled') : String(frames)} />

@@ -101,17 +101,47 @@ rooms:
         stepHeight: 0.19
         railing: both
 
+    # 灯光单位是物理单位（point/spot = 坎德拉），配合 AgX + exposure 1.57。
+    # 冷灰混凝土 + 暖色钠灯 = 冷暖对比；材质本身不调暖（见 packages/scene/src/palette.ts）。
+    # 阴影预算：点光是 cube shadow map（6 面），只给主灯开，其余显式关掉。
     lights:
       - {
           id: lamp_c,
           type: point,
-          at: { x: 0, y: 10, z: 0 },
-          intensity: 900,
-          range: 22,
+          at: { x: 0, y: 10.5, z: 0 },
+          intensity: 1100,
+          range: 30,
           color: '#ffd9a0',
+          castShadow: true,
         }
-      - { id: lamp_nw, type: point, at: { x: -9, y: 9, z: -9 }, intensity: 500, range: 16 }
-      - { id: lamp_se, type: point, at: { x: 9, y: 9, z: 9 }, intensity: 500, range: 16 }
+      - {
+          id: lamp_nw,
+          type: point,
+          at: { x: -9, y: 9, z: -9 },
+          intensity: 520,
+          range: 20,
+          color: '#ffcf90',
+          castShadow: false,
+        }
+      - {
+          id: lamp_se,
+          type: point,
+          at: { x: 9, y: 9, z: 9 },
+          intensity: 520,
+          range: 20,
+          color: '#ffcf90',
+          castShadow: false,
+        }
+      # 冷色补光压住暖调，避免整间房偏黄
+      - {
+          id: fill_cool,
+          type: point,
+          at: { x: 0, y: 4, z: -12 },
+          intensity: 340,
+          range: 18,
+          color: '#8fb6d8',
+          castShadow: false,
+        }
 
     markers:
       # 编辑器第一人称漫游的起始点（游戏里的出生点由对局逻辑决定）

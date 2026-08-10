@@ -69,6 +69,60 @@ describe('外壳 mesh 数量', () => {
   });
 });
 
+describe('灯光', () => {
+  it('房间自带的灯默认被实例化 —— 它在 v0.2 之前是个死字段', () => {
+    for (const spec of ['S', 'M', 'L'] as const) {
+      const { room, theme } = firstRoomOf(spec);
+      expect(room.lights.length, `${spec} 示例应该有灯`).toBeGreaterThan(0);
+      const built = buildRoom(room, theme);
+      expect(built.stats.lights, `spec=${spec}`).toBe(room.lights.length);
+      built.dispose();
+    }
+  });
+
+  it('showLights=false 时一盏都不建', () => {
+    const { room, theme } = firstRoomOf('S');
+    const built = buildRoom(room, theme, { showLights: false });
+    expect(built.stats.lights).toBe(0);
+    expect(built.stats.shadowCasters).toBe(0);
+    built.dispose();
+  });
+
+  it('灯光进了场景图，spot 的 target 也在（否则朝向不生效）', () => {
+    const { room, theme } = firstRoomOf('L');
+    const built = buildRoom(room, theme, { showStructures: false });
+    const lights = built.root.children.filter((c) => c.name.startsWith('light:'));
+    expect(lights).toHaveLength(room.lights.length);
+    for (const spot of lights.filter(
+      (l) => (l as { isSpotLight?: boolean }).isSpotLight === true,
+    )) {
+      const target = (spot as unknown as { target: { parent: unknown } }).target;
+      expect(target.parent, 'spot 的 target 必须也在场景图里').not.toBeNull();
+    }
+    built.dispose();
+  });
+
+  it('阴影标记：外壳与结构件参与，传送门不参与', () => {
+    const { room, theme } = firstRoomOf('S');
+    const built = buildRoom(room, theme, { showCeiling: true });
+    // 只看 mesh —— 灯光与 spot 的 target 也是 root 的子节点
+    const meshes = built.root.children.filter((c) => (c as { isMesh?: boolean }).isMesh === true);
+    expect(meshes.length).toBe(built.stats.meshes);
+
+    for (const mesh of meshes) {
+      const isPortal = mesh.name.startsWith('portal');
+      // 传送门是自发光面片，投影只会在地上留一块莫名黑影
+      expect(mesh.castShadow, mesh.name).toBe(!isPortal);
+      expect(mesh.receiveShadow, mesh.name).toBe(!isPortal);
+    }
+
+    // 地板必须接收阴影 —— 它是结构件投影的主要落点，也是最容易漏的一个
+    const floor = meshes.find((m) => m.name === 'floor');
+    expect(floor?.receiveShadow).toBe(true);
+    built.dispose();
+  });
+});
+
 describe('洞口与可行走面', () => {
   it('洞口总数 = 派生传送门 + 手写开口', () => {
     for (const spec of ['S', 'M', 'L'] as const) {

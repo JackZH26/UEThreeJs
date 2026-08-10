@@ -187,6 +187,17 @@ pnpm check          # format + lint + typecheck + test
 pnpm verify:three   # three.js submodule 接线检查
 ```
 
+改过**渲染器 / 材质 / 灯光 / 后处理**之后还要跑：
+
+```bash
+pnpm dev &                              # 先起服务
+pnpm probe:editor --shots /tmp/shots    # 用 CDP 真开浏览器逐关卡自检
+```
+
+单元测试跑在 Node 里碰不到 WebGPU，渲染管线的错误只在真实 GPU 上出现，
+而且常常表现为"画面不对"而不是抛异常。这个探针会机器判定每个关卡是否在渲染、
+并汇总全程控制台，退出码 0 = 干净。踩过的三个 WebGPU 坑见 docs/CONVENTIONS.md §5.4。
+
 ### 新增校验规则
 
 1. 在 `packages/core/src/rules/` 对应文件里加，按分段取下一个空号
@@ -215,8 +226,16 @@ pnpm verify:three   # three.js submodule 接线检查
 - **`packages/schema`** —— S/M/L 规格派生表（尺寸 + 传送门），有专门的回归测试钉死数字
 - **`packages/scene`** —— 房间外壳几何（带洞口的四面墙 + 地板 + 天花）+ **9 类内部结构件几何**
   - 固定样式传送门。有测试断言**外壳 AABB 恰好等于占格尺寸**（可互换性的地基）
+  - `palette.ts` 命名材质表（冷灰工业调）；未知材质 id 仍回落哈希占位色，
+    这样主题引用写错时颜色会突变、一眼可见
+  - `lights.ts` 把 `room.lights` 真正实例化（v0.2 之前它是个死字段，写了不渲染）
+  - 平台护栏在楼梯 / 斜坡 / 爬梯的接入处**自动断开** —— 由 `to` + `facing` 派生，
+    不需要作者声明哪条边留口
 - **`apps/editor`** —— 3D 视口（`pnpm dev` 启动，WebGPU 自动回退 WebGL2），
   布局是**左侧显示区 / 右侧操作面板**，中英文切换；含第一人称漫游（可走上夹层）
+  - 影调对齐 three.js 的 SSR + Denoise 示例：AgX 色调映射、阴影、程序化 IBL、
+    以及 SSR → 时域重投影 → 递归降噪 → TRAA 的后处理链
+  - 后处理构建失败会**回落到直接渲染**并在面板上报，不会黑屏
 
 **尚不存在**（不要假设它们可用）：
 编辑操作、命令实现、file watcher 热重载、预设库（主题/道具都是占位哈希色）、

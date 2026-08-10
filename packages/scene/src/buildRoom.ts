@@ -6,6 +6,7 @@ import { MaterialLibrary } from './materials.js';
 import { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 import { buildStructureGeometry } from './structures.js';
 import { PORTAL_FRAME_MATERIAL, PORTAL_SURFACE_MATERIAL, buildPortalGeometry } from './portal.js';
+import { buildLights } from './lights.js';
 
 /**
  * ============================================================
@@ -35,6 +36,13 @@ export interface BuildRoomOptions {
   showCeiling?: boolean;
   /** 是否生成内部结构件几何。默认 `true`。 */
   showStructures?: boolean;
+  /**
+   * 是否把 `room.lights` 里的灯光实例化进场景。默认 `true`。
+   *
+   * 关掉是为了对照：只留编辑器的主光时更容易看清几何，
+   * 而开着才是关卡的真实照明。
+   */
+  showLights?: boolean;
 }
 
 export interface BuildRoomStats {
@@ -43,6 +51,10 @@ export interface BuildRoomStats {
   portals: number;
   structures: number;
   meshes: number;
+  /** 实例化的灯光数 */
+  lights: number;
+  /** 其中开启了阴影的灯数 —— 阴影是主要开销，值得暴露出来 */
+  shadowCasters: number;
 }
 
 export interface BuildRoomResult {
@@ -87,7 +99,14 @@ export function buildRoom(
 
   const walkables: Mesh[] = [];
   const geometries: BufferGeometry[] = [];
-  const stats: BuildRoomStats = { openings: 0, portals: 0, structures: 0, meshes: 0 };
+  const stats: BuildRoomStats = {
+    openings: 0,
+    portals: 0,
+    structures: 0,
+    meshes: 0,
+    lights: 0,
+    shadowCasters: 0,
+  };
 
   const add = (
     geometry: BufferGeometry,
@@ -100,6 +119,11 @@ export function buildRoom(
     const mesh = new Mesh(geometry, materials.get(materialId));
     mesh.name = name;
     mesh.userData = { roomId: room.id, ...meta };
+    // 外壳与结构件都参与阴影：墙体投影会在地面形成"井底"光影，
+    // 那正是参考例子（阳光射进地牢）的观感来源。
+    // 传送门是自发光面片，投影只会给出一块莫名的黑影 —— 排除。
+    mesh.castShadow = meta.kind !== 'portal';
+    mesh.receiveShadow = meta.kind !== 'portal';
     root.add(mesh);
     stats.meshes++;
     geometries.push(geometry);
@@ -157,6 +181,18 @@ export function buildRoom(
     }
   }
 
+  // ── 灯光 ──────────────────────────────────────────────
+  // spot 的 target 必须一起进场景图，否则它的世界矩阵不更新、朝向不生效
+  const builtLights = options.showLights === false ? null : buildLights(room);
+  if (builtLights !== null) {
+    for (const { light, target } of builtLights.lights) {
+      root.add(light);
+      if (target !== null) root.add(target);
+    }
+    stats.lights = builtLights.lights.length;
+    stats.shadowCasters = builtLights.shadowCasters;
+  }
+
   const size = roomSize(room);
 
   return {
@@ -170,6 +206,11 @@ export function buildRoom(
       for (const geometry of geometries) geometry.dispose();
       geometries.length = 0;
       walkables.length = 0;
+      // 灯光也持有 GPU 资源（阴影贴图、RectAreaLight 的 LTC 纹理）
+      if (builtLights !== null) {
+        for (const { light } of builtLights.lights) light.dispose();
+        builtLights.lights.length = 0;
+      }
       if (ownsMaterials) materials.dispose();
       root.clear();
     },

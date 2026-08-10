@@ -21,6 +21,12 @@
 export { MaterialLibrary } from './materials.js';
 export type { MaterialLibraryOptions } from './materials.js';
 
+export { PALETTE, paletteIds, surfaceSpec } from './palette.js';
+export type { SurfaceSpec } from './palette.js';
+
+export { buildLight, buildLights } from './lights.js';
+export type { BuiltLight, BuiltLights } from './lights.js';
+
 export { buildCeilingGeometry, buildFloorGeometry, buildWallGeometry } from './shell.js';
 export type { WallGeometryResult } from './shell.js';
 

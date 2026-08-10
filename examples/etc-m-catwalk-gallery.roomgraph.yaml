@@ -127,25 +127,54 @@ rooms:
       - { id: col_d, type: pillar, at: { x: 9, z: 5 }, size: 1.2, profile: round }
       - { id: col_e, type: pillar, at: { x: 18, z: -5 }, size: 1.2, profile: round }
 
+    # 三盏顶灯沿长边排开撑起主照明；只有中间那盏投影（长廊里三盏都投影会
+    # 产生互相打架的多重影，而且是三倍 cube shadow map 开销）。
+    # 夹层下方用冷色补光，与顶部暖光形成分层的冷暖对比。
     lights:
-      - { id: lamp_w, type: point, at: { x: -20, y: 16, z: 0 }, intensity: 1100, range: 26 }
-      - { id: lamp_c, type: point, at: { x: 0, y: 16, z: 0 }, intensity: 1100, range: 26 }
-      - { id: lamp_e, type: point, at: { x: 20, y: 16, z: 0 }, intensity: 1100, range: 26 }
+      - {
+          id: lamp_w,
+          type: point,
+          at: { x: -20, y: 16, z: 0 },
+          intensity: 1900,
+          range: 34,
+          color: '#ffe0b0',
+          castShadow: false,
+        }
+      - {
+          id: lamp_c,
+          type: point,
+          at: { x: 0, y: 16, z: 0 },
+          intensity: 2100,
+          range: 36,
+          color: '#ffe0b0',
+          castShadow: true,
+        }
+      - {
+          id: lamp_e,
+          type: point,
+          at: { x: 20, y: 16, z: 0 },
+          intensity: 1900,
+          range: 34,
+          color: '#ffe0b0',
+          castShadow: false,
+        }
       - {
           id: lamp_mn,
           type: point,
           at: { x: 0, y: 5, z: -11 },
-          intensity: 400,
-          range: 18,
+          intensity: 620,
+          range: 22,
           color: '#9fd4ff',
+          castShadow: false,
         }
       - {
           id: lamp_ms,
           type: point,
           at: { x: 0, y: 5, z: 11 },
-          intensity: 400,
-          range: 18,
+          intensity: 620,
+          range: 22,
           color: '#9fd4ff',
+          castShadow: false,
         }
 
     markers:

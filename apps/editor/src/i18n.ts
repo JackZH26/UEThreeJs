@@ -38,6 +38,8 @@ const MESSAGES = {
     'section.diagnostics': '诊断',
 
     'toggle.structures': '内部结构件（夹层 / 楼梯 / 廊桥）',
+    'toggle.lights': '房间灯光（关卡自带布光）',
+    'toggle.ssr': '屏幕空间反射 + 时域抗锯齿',
     'toggle.ceiling': '天花（挡住内部，默认关）',
     'toggle.wireframe': '线框模式（核对几何拓扑）',
     'toggle.firstPerson': '第一人称漫游',
@@ -59,6 +61,7 @@ const MESSAGES = {
     'row.markers': '标记',
 
     'unit.cells': '格',
+    'unit.shadowCasters': '盏投影',
     'value.derived': '（派生）',
     'value.framesStalled': '0（循环未启动！）',
     'value.none': '无',
@@ -73,6 +76,7 @@ const MESSAGES = {
     'note.singleRoom':
       '每个房间是独立关卡，房间之间由**传送门**在运行时连接 —— 因此这里只显示当前房间。',
     'note.diagnosticsLang': '诊断信息目前仅有中文（由校验器产生，见 i18n.ts 说明）。',
+    'note.postFallback': '⚠ 后处理管线构建失败，已回落到直接渲染（无反射）。房间仍可正常编辑。',
   },
   en: {
     'app.title': 'ThreeJsRoomEditor',
@@ -87,6 +91,8 @@ const MESSAGES = {
     'section.diagnostics': 'Diagnostics',
 
     'toggle.structures': 'Interior structures (mezzanine / stairs / catwalk)',
+    'toggle.lights': 'Room lights (the level’s own lighting)',
+    'toggle.ssr': 'Screen-space reflections + temporal AA',
     'toggle.ceiling': 'Ceiling (hides the interior, off by default)',
     'toggle.wireframe': 'Wireframe (verify geometry topology)',
     'toggle.firstPerson': 'First-person walkthrough',
@@ -108,6 +114,7 @@ const MESSAGES = {
     'row.markers': 'Markers',
 
     'unit.cells': 'cells',
+    'unit.shadowCasters': 'casting shadows',
     'value.derived': '(derived)',
     'value.framesStalled': '0 (loop never started!)',
     'value.none': 'none',
@@ -124,6 +131,8 @@ const MESSAGES = {
       'Each room is a standalone level; rooms are linked by **portals** at runtime — so only the current room is shown here.',
     'note.diagnosticsLang':
       'Diagnostics are currently Chinese-only (produced by the validator; see i18n.ts).',
+    'note.postFallback':
+      '⚠ Post-processing pipeline failed to build; fell back to direct rendering (no reflections). The room is still fully editable.',
   },
 } as const;
 

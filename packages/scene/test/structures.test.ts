@@ -113,6 +113,106 @@ describe('platform（夹层）', () => {
   });
 });
 
+/**
+ * 楼梯接进平台的位置，平台栏杆必须断开 —— 否则栏杆横在楼梯口上，人上不去。
+ * 这是真实踩到的问题（S 示例的角落平台）。开口是**派生**的：
+ * 作者写了 `stair.to` 和 `facing`，进入边与开口宽度就唯一确定了。
+ */
+describe('护栏在楼梯接入处断开', () => {
+  /** 平台 z ∈ [-8, -2]，x ∈ [-10, 10]，标高 4；楼梯朝北上行、从南边接入 */
+  const DECK: Structure = {
+    id: 'mezz',
+    type: 'platform',
+    rect: { x: 0, z: -5, w: 20, d: 6 },
+    elevation: 4,
+    thickness: 0.3,
+    railing: ['south'],
+  };
+  /** rise 4 / stepHeight 0.18 → 23 级 × 0.27 = 进深 6.21 → 顶端 z = -5.21 */
+  const STAIR: Structure = {
+    id: 'st',
+    type: 'stair',
+    from: { x: 0, z: 1 },
+    fromElevation: 0,
+    to: 'mezz',
+    facing: 'north',
+    width: 1.6,
+    stepHeight: 0.18,
+    railing: 'none',
+  };
+
+  /** 取 south 边（z ≈ -2）上、扶手高度处的顶点 x 范围 */
+  function handrailXSpanAtGap(structures: Structure[]): number[] {
+    const { built } = buildOne(structures, 'mezz');
+    if (built === null) throw new Error('无几何');
+    const position = built.geometry.getAttribute('position');
+    const xs: number[] = [];
+    for (let i = 0; i < position.count; i++) {
+      // 扶手顶面在 4 + 1.1 附近，south 边在 z ≈ -2
+      if (position.getY(i) > 4.9 && position.getZ(i) > -2.2) xs.push(position.getX(i));
+    }
+    return xs;
+  }
+
+  it('没有楼梯时护栏是连续的 —— 覆盖整条边', () => {
+    const xs = handrailXSpanAtGap([DECK]);
+    // 边中点附近必须有扶手顶点（连续）
+    expect(xs.some((x) => Math.abs(x) < 0.9)).toBe(true);
+  });
+
+  it('楼梯接入后，接入处的护栏被挖开', () => {
+    const xs = handrailXSpanAtGap([DECK, STAIR]);
+    // 楼梯宽 1.6（半宽 0.8）+ 余量 0.3 → 开口约 x ∈ [-1.1, 1.1]
+    const insideGap = xs.filter((x) => Math.abs(x) < 0.9);
+    expect(insideGap, `开口内仍有扶手顶点：${insideGap.join(', ')}`).toEqual([]);
+    // 但开口两侧仍然有护栏（不是把整条边都删了）
+    expect(xs.some((x) => x < -2)).toBe(true);
+    expect(xs.some((x) => x > 2)).toBe(true);
+  });
+
+  it('开口只影响楼梯进入的那条边', () => {
+    // 同一个平台四边都加栏杆，只有 south 该被挖开
+    const { built } = buildOne(
+      [{ ...DECK, railing: ['north', 'south', 'east', 'west'] }, STAIR],
+      'mezz',
+    );
+    if (built === null) throw new Error('无几何');
+    const position = built.geometry.getAttribute('position');
+    let northHasRailAtCenter = false;
+    for (let i = 0; i < position.count; i++) {
+      // north 边在 z = -8。阈值取 0.9 与 south 的断言一致 ——
+      // 立柱间距 1.2m，中心附近最近的立柱落在 x ≈ ±0.59，窗口再窄就会
+      // 落在两根立柱之间而误判（box 几何只有角点，扶手中段没有顶点）。
+      if (position.getY(i) > 4.9 && position.getZ(i) < -7.8 && Math.abs(position.getX(i)) < 0.9) {
+        northHasRailAtCenter = true;
+      }
+    }
+    expect(northHasRailAtCenter, 'north 边不该被挖开').toBe(true);
+  });
+
+  it('爬梯同样会挖开护栏', () => {
+    const xs = handrailXSpanAtGap([
+      DECK,
+      {
+        id: 'ld',
+        type: 'ladder',
+        at: { x: 0, z: -1.4 },
+        fromElevation: 0,
+        to: 'mezz',
+        width: 0.9,
+        facing: 'north',
+      },
+    ]);
+    // 爬梯宽 0.9（半宽 0.45）+ 余量 0.3 → 开口约 ±0.75
+    expect(xs.filter((x) => Math.abs(x) < 0.6)).toEqual([]);
+  });
+
+  it('楼梯指向别的平台时不挖开本平台', () => {
+    const xs = handrailXSpanAtGap([DECK, { ...STAIR, to: 'other' }]);
+    expect(xs.some((x) => Math.abs(x) < 0.9)).toBe(true);
+  });
+});
+
 describe('stair（室内楼梯）', () => {
   const STAIR: Structure = {
     id: 'st',

@@ -20,6 +20,7 @@
     "dev": "pnpm --filter @tjre/editor dev",
     "schema:emit": "tsx packages/schema/src/bin/emit-json-schema.ts",
     "verify:three": "tsx scripts/verify-three.ts",
+    "probe:editor": "tsx scripts/probe-editor.ts",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run test"
   },
   "devDependencies": {
