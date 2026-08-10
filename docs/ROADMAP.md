@@ -58,9 +58,14 @@
 - ✅ `apps/editor` —— Vite + React 骨架 + 只读 3D 视口（WebGPURenderer 自动回退 WebGL2）
 - ✅ `three.alias.ts` 单一来源；`verify:three` 增加**打包产物**单实例检查
 - ✅ `@tjre/core` 拆双入口（纯逻辑 / `./node` 文件 IO），使 core 可在浏览器复用
-- ⬜ 内部结构件几何（夹层 / 楼梯 / 廊桥 / 柱梁 / 隔墙）
-- ⬜ 第一人称漫游
-- ⬜ three-mesh-bvh 拾取加速
+- ✅ 内部结构件几何（9 类：platform / stair / ladder / ramp / catwalk / railing / pillar / beam / partition）
+  - 楼梯踏面深度由 **Blondel 公式**（2R + G = 630mm）导出，不用魔法数字
+  - 每个结构件的零件用 mergeGeometries 合并成 1 个 mesh（20 级楼梯 = 1 draw call）
+  - buildScene 导出 walkables 列表，供第一人称地面检测
+- ✅ 天花默认关闭（编辑器要能看进房间内部），可开关
+- ✅ 第一人称漫游：PointerLock + 向下射线地面跟随 + 台阶容差（楼梯自然可走）
+- ⬜ three-mesh-bvh 拾取加速（房间数少时暂不需要）
+- ⬜ R046 校验：楼梯顶端是否真的落在目标平台上
 - `packages/scene/` — RoomGraph → three.js 场景
   - 外壳几何（带洞口的墙面）、结构件几何生成（平台/楼梯/廊桥/柱梁/隔墙）
   - 主题材质占位

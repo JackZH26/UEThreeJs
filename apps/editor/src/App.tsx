@@ -3,11 +3,15 @@ import { parseDocument, solveLayout, validateDocument } from '@tjre/core';
 import type { Diagnostic } from '@tjre/core';
 import type { RoomGraphDocument } from '@tjre/schema';
 import { Viewport } from './Viewport.js';
+import type { ViewportStats } from './Viewport.js';
+import { ErrorBoundary } from './ErrorSurface.js';
 import twoRooms from '../../../examples/two-rooms.roomgraph.yaml?raw';
 import loftWarehouse from '../../../examples/loft-warehouse.roomgraph.yaml?raw';
 
 /**
  * Phase 1 的编辑器外壳：选关卡 → 三层校验 → 求解 → 渲染。
+ *
+ * 布局：**左侧 3D 显示区，右侧操作面板**。
  *
  * 关卡内容目前从 `examples/` 以 `?raw` 静态引入。Phase 2 会换成
  * file watcher + write-through，让外部 AI agent 改文件后浏览器自动热重载。
@@ -57,9 +61,13 @@ function analyse(source: string): Analysis {
 export function App(): React.ReactElement {
   const [levelId, setLevelId] = useState(LEVELS[0]?.id ?? '');
   const [wireframe, setWireframe] = useState(false);
-  const [stats, setStats] = useState<{ rooms: number; meshes: number; openings: number } | null>(
-    null,
-  );
+  // 天花默认关：编辑器常态是从外部俯视，开着就什么内部都看不到
+  const [showCeiling, setShowCeiling] = useState(false);
+  const [showStructures, setShowStructures] = useState(true);
+  const [firstPerson, setFirstPerson] = useState(false);
+  const [stats, setStats] = useState<ViewportStats | null>(null);
+  const [backend, setBackend] = useState<string | null>(null);
+  const [rendererError, setRendererError] = useState<Error | null>(null);
 
   const level = LEVELS.find((l) => l.id === levelId) ?? LEVELS[0];
   const analysis = useMemo(() => analyse(level?.source ?? ''), [level]);
@@ -69,12 +77,40 @@ export function App(): React.ReactElement {
 
   return (
     <div style={{ display: 'flex', height: '100%' }}>
+      {/* ── 左：3D 显示区 ─────────────────────────────── */}
+      <main style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+        {analysis.doc === null ? (
+          <div style={{ padding: 24, color: 'var(--error)' }}>
+            关卡在 {analysis.stage} 阶段校验失败，无法渲染。见右侧诊断。
+          </div>
+        ) : (
+          <ErrorBoundary label="3D 视口">
+            {rendererError !== null && (
+              <div style={{ padding: 24, color: 'var(--error)', whiteSpace: 'pre-wrap' }}>
+                {`✗ 渲染器初始化失败\n\n${rendererError.message}\n\n${rendererError.stack ?? ''}`}
+              </div>
+            )}
+            <Viewport
+              doc={analysis.doc}
+              wireframe={wireframe}
+              showCeiling={showCeiling}
+              showStructures={showStructures}
+              firstPerson={firstPerson}
+              onStats={setStats}
+              onBackend={setBackend}
+              onError={setRendererError}
+            />
+          </ErrorBoundary>
+        )}
+      </main>
+
+      {/* ── 右：操作面板 ──────────────────────────────── */}
       <aside
         style={{
           width: 320,
           flexShrink: 0,
           background: 'var(--panel)',
-          borderRight: '1px solid var(--border)',
+          borderLeft: '1px solid var(--border)',
           padding: 14,
           overflowY: 'auto',
         }}
@@ -91,24 +127,32 @@ export function App(): React.ReactElement {
           </select>
         </Field>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, margin: '10px 0 16px' }}>
-          <input
-            type="checkbox"
-            checked={wireframe}
-            onChange={(e) => setWireframe(e.target.checked)}
-          />
-          线框模式（核对几何拓扑）
-        </label>
+        <Section title="显示">
+          <Toggle checked={showStructures} onChange={setShowStructures}>
+            内部结构件（夹层 / 楼梯 / 廊桥）
+          </Toggle>
+          <Toggle checked={showCeiling} onChange={setShowCeiling}>
+            天花（挡住内部，默认关）
+          </Toggle>
+          <Toggle checked={wireframe} onChange={setWireframe}>
+            线框模式（核对几何拓扑）
+          </Toggle>
+          <Toggle checked={firstPerson} onChange={setFirstPerson}>
+            第一人称漫游
+          </Toggle>
+        </Section>
 
         <Section title="布局">
           <Row k="校验阶段" v={analysis.stage} />
           <Row k="房间" v={String(analysis.roomCount)} />
           <Row k="范围" v={analysis.bounds} />
+          {backend !== null && <Row k="渲染后端" v={backend} />}
           {stats !== null && (
             <>
               <Row k="已渲染房间" v={String(stats.rooms)} />
               <Row k="Mesh 数" v={String(stats.meshes)} />
               <Row k="洞口数" v={String(stats.openings)} />
+              <Row k="结构件" v={String(stats.structures)} />
             </>
           )}
         </Section>
@@ -143,21 +187,17 @@ export function App(): React.ReactElement {
         <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 18, lineHeight: 1.7 }}>
           Phase 1 · 只读视口
           <br />
-          内部结构件（夹层 / 楼梯 / 廊桥）尚未渲染，下一轮加。
-          <br />
-          鼠标左键旋转 · 滚轮缩放 · 右键平移
+          {firstPerson ? (
+            <>
+              点击画面锁定鼠标 · WASD 移动 · Shift 加速
+              <br />
+              Space 跳 · Esc 退出锁定
+            </>
+          ) : (
+            <>鼠标左键旋转 · 滚轮缩放 · 右键平移</>
+          )}
         </div>
       </aside>
-
-      <main style={{ position: 'relative', flex: 1 }}>
-        {analysis.doc === null ? (
-          <div style={{ padding: 24, color: 'var(--error)' }}>
-            关卡在 {analysis.stage} 阶段校验失败，无法渲染。见左侧诊断。
-          </div>
-        ) : (
-          <Viewport doc={analysis.doc} wireframe={wireframe} onStats={setStats} />
-        )}
-      </main>
     </div>
   );
 }
@@ -171,6 +211,23 @@ const selectStyle: React.CSSProperties = {
   padding: '5px 6px',
 };
 
+function Toggle({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '3px 0' }}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+      {children}
+    </label>
+  );
+}
+
 function Field({
   label,
   children,
@@ -179,7 +236,7 @@ function Field({
   children: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div style={{ marginBottom: 8 }}>
+    <div style={{ marginBottom: 12 }}>
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 4 }}>{label}</div>
       {children}
     </div>

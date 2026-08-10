@@ -10,3 +10,4 @@
 export * from './materials.js';
 export * from './shell.js';
 export * from './buildScene.js';
+export * from './structures.js';

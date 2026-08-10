@@ -36,13 +36,47 @@ describe('buildScene 与求解器一致', () => {
     built.dispose();
   });
 
-  it('每个房间产出 6 个外壳 mesh（4 墙 + 地 + 顶）', () => {
+  it('默认不生成天花 —— 每个房间 5 个外壳 mesh（4 墙 + 地）', () => {
     const doc = loadExample('loft-warehouse.roomgraph.yaml');
-    const built = buildScene(doc);
+    const built = buildScene(doc, { showStructures: false });
+    expect(built.stats.meshes).toBe(3 * 5);
+    for (const group of built.roomGroups.values()) {
+      expect(group.children).toHaveLength(5);
+      expect(group.children.some((c) => c.name === 'ceiling')).toBe(false);
+    }
+    built.dispose();
+  });
+
+  it('showCeiling 打开后补上第 6 个 mesh', () => {
+    const doc = loadExample('loft-warehouse.roomgraph.yaml');
+    const built = buildScene(doc, { showCeiling: true, showStructures: false });
     expect(built.stats.meshes).toBe(3 * 6);
     for (const group of built.roomGroups.values()) {
-      expect(group.children).toHaveLength(6);
+      expect(group.children.some((c) => c.name === 'ceiling')).toBe(true);
     }
+    built.dispose();
+  });
+
+  it('结构件默认生成，数量与文档一致', () => {
+    const doc = loadExample('loft-warehouse.roomgraph.yaml');
+    const expected = doc.rooms.reduce((sum, r) => sum + r.structures.length, 0);
+    const built = buildScene(doc);
+    expect(built.stats.structures).toBe(expected);
+    expect(built.stats.meshes).toBe(3 * 5 + expected);
+    built.dispose();
+  });
+
+  it('可行走表面 = 地板 + platform/catwalk/stair/ramp', () => {
+    const doc = loadExample('loft-warehouse.roomgraph.yaml');
+    const built = buildScene(doc);
+    // 3 块地板 + hall 的 platform/stair/catwalk(3) + catwalk_room 的 platform(1) = 7
+    const walkableStructures = doc.rooms
+      .flatMap((r) => r.structures)
+      .filter((s) => ['platform', 'catwalk', 'stair', 'ramp'].includes(s.type));
+    expect(built.walkables).toHaveLength(3 + walkableStructures.length);
+    // 柱子与爬梯不可行走
+    expect(built.walkables.some((m) => m.name.startsWith('pillar:'))).toBe(false);
+    expect(built.walkables.some((m) => m.name.startsWith('ladder:'))).toBe(false);
     built.dispose();
   });
 
@@ -56,7 +90,7 @@ describe('buildScene 与求解器一致', () => {
 
   it('场景整体包围盒与求解 bounds 吻合（差值仅来自墙厚外扩）', () => {
     const doc = loadExample('loft-warehouse.roomgraph.yaml');
-    const built = buildScene(doc);
+    const built = buildScene(doc, { showCeiling: true, showStructures: false });
     const box = new Box3().setFromObject(built.root);
     const b = built.layout.bounds;
     const t = doc.meta.wallThickness / 2;
@@ -70,6 +104,15 @@ describe('buildScene 与求解器一致', () => {
     expect(box.min.y).toBeCloseTo(-t, P);
     expect(box.max.y).toBeCloseTo(10 + t, P);
 
+    built.dispose();
+  });
+
+  it('关掉天花时最高点是墙顶而非天花顶', () => {
+    const doc = loadExample('loft-warehouse.roomgraph.yaml');
+    const built = buildScene(doc, { showStructures: false });
+    const box = new Box3().setFromObject(built.root);
+    // hall 高 10m，墙顶正好 10；开天花时会是 10 + 半墙厚
+    expect(box.max.y).toBeCloseTo(10, P);
     built.dispose();
   });
 

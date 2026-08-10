@@ -167,12 +167,13 @@ pnpm verify:three   # three.js submodule 接线检查
 
 - **布局求解器** —— `solve` 命令可用，含 R07x 冲突诊断
   （R070 房间重叠 / R071 环路或 pin 矛盾 / R072 无法定位 / R073 非法 pin 旋转）
-- **`packages/scene`** —— 房间外壳几何（带洞口的四面墙 + 地板 + 天花）
-- **`apps/editor`** —— 只读 3D 视口（`pnpm dev` 启动，WebGPU 自动回退 WebGL2）
+- **`packages/scene`** —— 房间外壳几何（带洞口的四面墙 + 地板 + 天花）+ **9 类内部结构件几何**
+- **`apps/editor`** —— 3D 视口（`pnpm dev` 启动，WebGPU 自动回退 WebGL2），
+  布局是**左侧显示区 / 右侧操作面板**；含第一人称漫游（可走上夹层）
 
 **尚不存在**（不要假设它们可用）：
-内部结构件的几何渲染（夹层/楼梯/廊桥目前**只在 schema 与校验里存在，3D 里看不到**）、
-第一人称漫游、编辑操作、命令实现、file watcher 热重载、预设库、导出器、UE 管线。
+编辑操作、命令实现、file watcher 热重载、预设库（主题/道具都是占位哈希色）、
+导出器、UE 管线、three-mesh-bvh 拾取加速。
 
 ### 改代码时要知道的两条边界
 

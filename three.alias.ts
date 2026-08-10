@@ -24,7 +24,11 @@ export const threeAlias: Record<string, string> = {
   // 否则 'three' 会先命中并把 'three/webgpu' 截断。
   'three/webgpu': r('./three.js/build/three.webgpu.js'),
   'three/tsl': r('./three.js/build/three.tsl.js'),
-  'three/addons/': r('./three.js/examples/jsm/'),
+  // ⚠️ key **不能**带尾斜杠。对象形式别名的匹配规则是
+  //    `importee === find || importee.startsWith(find + '/')`，
+  //    写成 'three/addons/' 就要求匹配 'three/addons//'，永远命中不了。
+  //    （Vite 用下面的正则形式，所以曾一度只有 vitest 解析失败。）
+  'three/addons': r('./three.js/examples/jsm'),
   three: r('./three.js/build/three.module.js'),
 };
 
@@ -32,6 +36,6 @@ export const threeAlias: Record<string, string> = {
 export const threeAliasEntries: { find: string | RegExp; replacement: string }[] = [
   { find: /^three\/webgpu$/, replacement: threeAlias['three/webgpu'] as string },
   { find: /^three\/tsl$/, replacement: threeAlias['three/tsl'] as string },
-  { find: /^three\/addons\//, replacement: threeAlias['three/addons/'] as string },
+  { find: /^three\/addons\//, replacement: `${threeAlias['three/addons'] as string}/` },
   { find: /^three$/, replacement: threeAlias.three as string },
 ];
